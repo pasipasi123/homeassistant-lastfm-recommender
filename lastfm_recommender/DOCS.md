@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.2.3 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.2.4 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -48,7 +48,8 @@ The optional Spotify catalogue credentials are separate from SpotifyPlus authent
 
 1. In **Discover**, choose a genre, optionally adjust minimum years/count, then select **Find a forgotten favorite**.
 2. Preview the artist, album, scrobble count and last-listened date.
-3. Select **Play this album**. Unconfirmed albums show a link to **Album library**, where the Spotify link can be confirmed first.
+3. If the Spotify link needs confirmation, review the Spotify matches directly on the recommendation card, choose **Use this edition**, then **Confirm Spotify link**. You can also paste an album link there. The same album stays visible and its **Play this album** button becomes available once a player is saved. For already linked albums, **Check or change Spotify link** lets you review or correct the edition in place.
+4. Select **Play this album**. Confirming a link never starts playback automatically.
 
 Choosing a genre or opening the page does not search or play automatically. Changing filters clears the previous result. A response arriving after filters changed is discarded. Playback submits an album ID and expected URI; the server checks the current confirmed URI in SQLite before making a SpotifyPlus call.
 

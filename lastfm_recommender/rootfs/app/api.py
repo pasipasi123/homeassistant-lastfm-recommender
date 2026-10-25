@@ -137,7 +137,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
 
             if path == "/api/status" and method == "GET":
                 self.send_json(200, {**db.status(), "running": worker.running,
-                                     "pending": worker.pending, "phase": worker.phase, "version": "0.2.3",
+                                     "pending": worker.pending, "phase": worker.phase, "version": "0.2.4",
                                      "spotify_configured": bool(worker.settings.spotify_client_id),
                                      "spotify_market": worker.settings.spotify_market,
                                      "enrichment_enabled": worker.settings.enrich_batch_size > 0,
@@ -221,7 +221,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                         any(not isinstance(t, str) or len(t) > 100 for t in tags)):
                     raise ValueError("Invalid tags")
                 db.confirm_album(album_id, uri, tags)
-                self.send_json(200, {"saved": True})
+                self.send_json(200, {"saved": True, "album": db.album(album_id)})
             elif path == "/api/backup" and method == "GET":
                 with tempfile.TemporaryDirectory(dir=data_dir) as folder:
                     backup = Path(folder) / "scrobbles.db"

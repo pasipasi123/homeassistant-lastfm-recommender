@@ -67,6 +67,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .album p { margin: 3px 0 12px; font-size: .9rem; }
 .album form { max-width: 650px; }
 .album a { color: var(--accent); text-underline-offset: 3px; }
+.album a.album-source { display: block; width: fit-content; margin: 0 0 12px; color: var(--muted); font-size: .8rem; text-decoration: none; }
+.album a.album-source:hover, footer a:hover { text-decoration: underline; }
 .play-album { display: block; margin-top: 14px; }
 #message { min-height: 1.6em; overflow-wrap: anywhere; }
 #message:empty { min-height: 0; margin: 0; }
@@ -95,6 +97,8 @@ summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .spotify-option a { display: block; margin-bottom: 10px; }
 .spotify-option button { margin-bottom: 0; }
 footer { font-size: .8rem; margin-top: 30px; }
+footer p { margin: 4px 0; }
+footer a { color: inherit; text-underline-offset: 3px; }
 @media (max-width: 650px) {
   main { padding: 26px 14px; }
   .filters { grid-template-columns: 1fr; gap: 0; }

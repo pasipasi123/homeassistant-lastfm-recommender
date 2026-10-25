@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+- Review Spotify matches and confirm or change the recommended album's link directly in Discover, preserving the album and enabling explicit playback without switching to Album library.
+- Handle non-JSON proxy responses with a named request and HTTP status, retry transient read failures once, clear recovered refresh errors and never automatically repeat playback commands.
+- Add a quiet Last.fm source credit in the footer and album-specific catalogue links in discovery and library cards.
+
 ## 0.2.3
 
 - Display reported volume on a 0.0–100.0 scale without a percent sign and add adjustment buttons in steps of 1.0, using fresh player state and disabling duplicate requests while a control is pending.

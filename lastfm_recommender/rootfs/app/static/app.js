@@ -10,32 +10,73 @@ let playerDraft = null;
 let playerLoading = false;
 let playerVolume = null;
 let controlBusy = false;
+let controlError = "";
 let volumeConfig = {min: 0, max: 100, step: 1, decimals: 1};
 let genreData = null;
 let expandedGenres = false;
 let recommendationGeneration = 0;
 let backgroundMessage = false;
+const refreshErrors = new Map();
+let metadataErrors = [];
 $("#token").value = token;
 
 function message(text, error = false, background = false) {
-  backgroundMessage = background;
+  backgroundMessage = background || (error && [...refreshErrors.values()].includes(text));
   $("#message").textContent = text;
   $("#message").className = error ? "error" : "";
 }
 function authHeaders() {
   return !ingress && token ? {Authorization: `Bearer ${token}`} : {};
 }
+function backgroundErrors() {
+  const errors = [...metadataErrors, ...refreshErrors.values()];
+  if (errors.length) message(errors.join(" · "), true, true);
+  else if (backgroundMessage) message("");
+}
+async function requestJson(path, options = {}) {
+  const endpoint = path.split("?")[0].replace(/^\/+/, "");
+  const label = {"api/session":"Music connection", "api/status":"Library status", "api/genres":"Genre list",
+    "api/players":"Player status", "api/albums":"Album library", "api/recommend":"Album recommendation",
+    "api/play":"Playback", "api/player/control":"Player control"}[endpoint] || "Music request";
+  const readOnly = !options.method || options.method === "GET";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let response;
+    try { response = await fetch(apiUrl(path), options); }
+    catch { throw new Error(`${label}: connection failed. Check the app and reopen Music from the Home Assistant sidebar.`); }
+    if (readOnly && attempt === 0 && [502, 503, 504].includes(response.status)) {
+      await response.body?.cancel();
+      await new Promise(resolve => setTimeout(resolve, 750));
+      continue;
+    }
+    let data;
+    try { data = await response.json(); }
+    catch {
+      const advice = !readOnly && ["api/play", "api/player/control"].includes(endpoint)
+        ? "Check the player state before retrying; the command was not automatically repeated."
+        : "The app or Home Assistant proxy returned an unexpected response. Reopen Music from the sidebar.";
+      throw new Error(`${label}: HTTP ${response.status}, expected a JSON response. ${advice}`);
+    }
+    if (!response.ok) throw new Error(`${label}: ${data?.error || `HTTP ${response.status}`}`);
+    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(`${label}: invalid response format. Reopen Music from the sidebar.`);
+    return data;
+  }
+}
 async function api(path, options = {}) {
   if (!ingress && !token) throw new Error("Enter the app's API token first, or open Music through Home Assistant.");
   const requestToken = token;
-  const response = await fetch(apiUrl(path), {...options, headers: {
-    ...authHeaders(), "Content-Type": "application/json", ...options.headers
-  }});
-  const data = await response.json();
-  if (!ingress && token !== requestToken) throw new Error("Connection changed. Connect again to refresh the page.");
-  if (!response.ok) throw new Error(data.error || (response.status === 409
-    ? "A sync is already running or queued." : `HTTP ${response.status}`));
-  return data;
+  const endpoint = path.split("?")[0];
+  const refresh = ["api/status", "api/genres", "api/players"].includes(endpoint);
+  try {
+    const data = await requestJson(path, {...options, headers: {
+      ...authHeaders(), "Content-Type": "application/json", ...options.headers
+    }});
+    if (!ingress && token !== requestToken) throw new Error("Connection changed. Connect again to refresh the page.");
+    if (refresh) { refreshErrors.delete(endpoint); backgroundErrors(); }
+    return data;
+  } catch (error) {
+    if (refresh && (ingress || token === requestToken)) refreshErrors.set(endpoint, error.message);
+    throw error;
+  }
 }
 function date(timestamp) {
   return timestamp ? new Date(timestamp * 1000).toLocaleString("en-GB") : "not yet";
@@ -71,10 +112,10 @@ async function status() {
       (!data.enrichment_enabled ? "Album updates are disabled; set enrich_batch_size above zero in app configuration."
         : data.enrichment_pending ? "Album updates queued."
         : "Links are checked in small background batches. Use Refresh albums to see new matches.");
-  const errors = [["History sync", data.last_error], ["Last.fm metadata", data.enrichment_error],
+  metadataErrors = [["History sync", data.last_error], ["Last.fm metadata", data.enrichment_error],
     ["Spotify lookup", data.spotify_error]].filter(([, error]) => error);
-  if (errors.length) message(errors.map(([source, error]) => `${source}: ${error}`).join(" · "), true, true);
-  else if (backgroundMessage) message("");
+  metadataErrors = metadataErrors.map(([source, error]) => `${source}: ${error}`);
+  backgroundErrors();
   await loadGenres();
 }
 async function loadGenres() {
@@ -139,6 +180,11 @@ function albumCard(album, editable = true) {
   element("h3", album.album + (album.release_year ? ` (${album.release_year})` : ""), content);
   element("p", `${album.artist} · ${album.scrobbles_total} scrobbles · last played ${date(album.last_listened_at)}`, content);
   element("p", album.tags.length ? album.tags.join(", ") : "No tags yet", content);
+  const source = element("a", "Last.fm", content);
+  source.className = "album-source";
+  source.href = "https://www.last.fm/music/" + encodeURIComponent(album.artist) + "/" + encodeURIComponent(album.album);
+  source.target = "_blank"; source.rel = "noopener noreferrer";
+  source.setAttribute("aria-label", `View ${album.album} by ${album.artist} on Last.fm`);
   const confirmed = album.spotify_status === "confirmed" && album.spotify_uri;
   if (confirmed) {
     const link = element("a", "Open confirmed album in Spotify", content);
@@ -158,22 +204,15 @@ function albumCard(album, editable = true) {
       } catch (error) { message(error.message, true); }
       finally { play.disabled = !confirmed || !playerReady; }
     });
-    if (!confirmed) element("p", "Confirm this album's Spotify link in Album library before playback.", content);
+    if (!confirmed) element("p", "Confirm this album's Spotify link below before playback.", content);
   }
-  if (!editable) {
-    if (!confirmed) {
-      const edit = element("button", "Confirm link in library", content); edit.type = "button"; edit.className = "secondary";
-      edit.addEventListener("click", () => {
-        $("#query").value = album.album; showView("library"); loadAlbums().catch(error => message(error.message, true));
-      });
-    }
-    return article;
-  }
+  const editor = element(!editable && confirmed ? "details" : "div", undefined, content);
+  if (!editable && confirmed) element("summary", "Check or change Spotify link", editor);
   let candidate = null;
   try { candidate = JSON.parse(album.spotify_candidate); } catch { /* No candidate. */ }
   const choices = candidate?.alternatives || (candidate ? [candidate] : []);
   if (choices.length) {
-    const details = element("details", undefined, content);
+    const details = element("details", undefined, editor);
     element("summary", `Review ${choices.length} Spotify ${choices.length === 1 ? "match" : "matches"}`, details);
     if (!confirmed) element("p", "Choose an edition, then confirm its link below.", details);
     if (candidate.complete === false) element("p", "More results exist. This search is incomplete, so no link was accepted automatically.", details);
@@ -192,22 +231,28 @@ function albumCard(album, editable = true) {
     }
   } else if (!confirmed) {
     element("p", album.spotify_checked_at ? "No Spotify match found. You can paste an album link below."
-      : "Spotify lookup pending. You can also paste an album link below.", content);
+      : "Spotify lookup pending. You can also paste an album link below.", editor);
   }
-  const form = element("form", undefined, content);
+  const form = element("form", undefined, editor);
   const label = element("label", "Spotify album link or URI", form);
   const uri = element("input", undefined, label); uri.type = "text"; uri.required = true; uri.maxLength = 2048;
   uri.value = album.spotify_uri || candidate?.uri || ""; uri.placeholder = "https://open.spotify.com/album/…";
-  const tagLabel = element("label", "Tags, separated by commas", form);
-  const tags = element("input", undefined, tagLabel); tags.value = album.tags.join(", ");
-  const button = element("button", "Confirm album link and tags", form);
+  let tags;
+  if (editable) {
+    const tagLabel = element("label", "Tags, separated by commas", form);
+    tags = element("input", undefined, tagLabel); tags.value = album.tags.join(", ");
+  }
+  const button = element("button", editable ? "Confirm album link and tags" : "Confirm Spotify link", form);
   form.addEventListener("submit", async event => {
     event.preventDefault(); button.disabled = true;
+    const generation = recommendationGeneration;
     try {
-      await api(`api/albums/${album.id}`, {method:"POST", body:JSON.stringify({
-        spotify_uri:uri.value, tags:tags.value.split(",").map(t=>t.trim()).filter(Boolean)
+      const result = await api(`api/albums/${album.id}`, {method:"POST", body:JSON.stringify({
+        spotify_uri:uri.value, ...(editable ? {tags:tags.value.split(",").map(t=>t.trim()).filter(Boolean)} : {})
       })});
-      clearRecommendation(); message("Spotify album link confirmed."); await loadAlbums(); await status();
+      if (editable) { clearRecommendation(); await loadAlbums(); }
+      else if (article.isConnected && generation === recommendationGeneration) article.replaceWith(albumCard(result.album, false));
+      message("Spotify album link confirmed."); await status();
     } catch (error) { message(error.message, true); }
     finally { button.disabled = false; }
   });
@@ -273,8 +318,13 @@ $("#player-volume-down").addEventListener("click", () => control("volume_down"))
 async function control(action, volume) {
   if (controlBusy) return;
   controlBusy = true; updatePlaybackButtons();
-  try { await api("api/player/control", {method:"POST", body:JSON.stringify({action, volume})}); await loadPlayers(); }
-  catch (error) { message(error.message, true); }
+  try {
+    await api("api/player/control", {method:"POST", body:JSON.stringify({action, volume})});
+    await loadPlayers();
+    if (controlError && $("#message").textContent === controlError) message("");
+    controlError = "";
+  }
+  catch (error) { controlError = error.message; message(error.message, true); }
   finally { controlBusy = false; updatePlaybackButtons(); }
 }
 async function connect() {
@@ -287,6 +337,7 @@ $("#auth").addEventListener("submit", async event => {
   try { await connect(); message("Connected."); } catch (error) { message(error.message, true); }
 });
 $("#logout").addEventListener("click", () => {
+  refreshErrors.clear(); metadataErrors = [];
   token = ""; sessionStorage.removeItem("lastfm-token"); $("#token").value = "";
   $("#albums").replaceChildren(); clearRecommendation();
   $("#genres").replaceChildren(); $("#genre-status").textContent = "";
@@ -332,9 +383,7 @@ $("#backup").addEventListener("click", async () => {
   } catch (error) { message(error.message, true); }
 });
 async function bootstrap() {
-  const response = await fetch(apiUrl("api/session"));
-  if (!response.ok) throw new Error("Could not initialize the Music page.");
-  const session = await response.json(); ingress = session.ingress; playbackAvailable = session.home_assistant_available;
+  const session = await requestJson("api/session"); ingress = session.ingress; playbackAvailable = session.home_assistant_available;
   volumeConfig = session.volume || volumeConfig;
   $("#player-volume").min = volumeConfig.min; $("#player-volume").max = volumeConfig.max; $("#player-volume").step = volumeConfig.step;
   $("#player-volume-up").setAttribute("aria-label", `Increase volume by ${volumeConfig.step.toFixed(volumeConfig.decimals)}`);

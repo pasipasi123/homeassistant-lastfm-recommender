@@ -9,7 +9,7 @@
 </head>
 <body>
 <main>
-  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.2.3</p>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.2.4</p>
     <h1>Music</h1><p>Your listening history, rediscovered.</p></header>
   <nav aria-label="Music pages">
     <button id="nav-music" type="button" aria-pressed="true">Discover</button>
@@ -85,7 +85,10 @@
     <form id="search" class="inline"><label>Artist or album<input id="query" maxlength="200" placeholder="Search your library"></label><button>Search</button></form>
     <div id="albums"></div>
   </section>
-  <footer>Recommendations and history stay on your home server. Playback uses your existing SpotifyPlus integration.</footer>
+  <footer>
+    <p>Listening history and tags provided by <a href="https://www.last.fm/" target="_blank" rel="noopener noreferrer">Last.fm</a>.</p>
+    <p>Recommendations and history stay on your home server. Playback uses your existing SpotifyPlus integration.</p>
+  </footer>
 </main>
 </body>
 </html>

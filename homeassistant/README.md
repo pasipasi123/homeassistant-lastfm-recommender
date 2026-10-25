@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.2.3** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.2.4** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -17,7 +17,7 @@ Home Assistant handles login for the Music page. Do not enter your Last.fm API k
 
 ## Daily use
 
-- **Discover**: choose a genre first, adjust the age/count filters, then select **Find a forgotten favorite**.
+- **Discover**: choose a genre first, adjust the age/count filters, then select **Find a forgotten favorite**. Review Spotify matches and confirm the album link on the same card; there is no need to switch to Album library. **Check or change Spotify link** also lets you correct an already linked edition.
 - **Play this album**: start a confirmed album on the selected SpotifyPlus account's active/default Spotify Connect device.
 - **Now playing**: view the current track/source, pause, resume or skip. Volume is shown on a 0.0–100.0 scale (for example, **32.0**); use **− / +** for steps of 1.0 or the slider for larger changes.
 - **Album library**: find Spotify links, review uncertain editions, confirm a link and edit tags. Unique exact artist/album matches are linked automatically when catalogue credentials are configured.
