@@ -1,22 +1,22 @@
 # Last.fm Recommender – User guide
 
-## Install on Home Assistant OS
+## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` under **Settings → Apps → Install app → ⋮ → Repositories**.
-2. Install **Last.fm Recommender**. Version 0.2.0 builds locally; a prebuilt registry image is not required.
-3. Enter the app options below, save and start the app.
-4. Select **Open Web UI** or visit `http://HA_SERVER_IP:8099/`. Enter the app's `api_token` and select **Connect**. The token is remembered only for the current browser tab's session.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.2.1 builds locally on your HA server.
+2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
+3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
+4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
 
-The app does not need your HA configuration directory, Supervisor API access, host networking or hardware access. Port 8099 must be available. If necessary, change the host port in the app's network settings and update the URLs accordingly.
+Home Assistant authenticates the Ingress page. No extra app login, dashboard YAML, custom card or manually created HA access token is required. The app receives a server-side Supervisor token and the `homeassistant_api` permission for its restricted playback client. The token is never returned to the browser or stored in the listening database.
 
-HTTP does not encrypt tokens or history in transit. Use a trusted local network or your own HTTPS reverse proxy; do not expose the port to the internet. This release does not support HA ingress. `/health` and static interface files are public; all `/api/` endpoints require a Bearer token.
+Existing Last.fm settings, history, tags, checkpoints and confirmed Spotify links are preserved. The saved SpotifyPlus entity belongs to this installation and is stored in the app database. [Music setup and daily use](../homeassistant/README.md).
 
 ## Options
 
 ```yaml
 lastfm_username: "your_username"
 lastfm_api_key: "your_lastfm_api_key"
-api_token: "REPLACE_WITH_A_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS"
+api_token: ""
 timezone: "Europe/Helsinki"
 sync_interval_minutes: 360
 enrich_batch_size: 10
@@ -25,129 +25,103 @@ spotify_client_id: ""
 spotify_client_secret: ""
 ```
 
-- **Last.fm username and API key** are required. Get a key from [Last.fm](https://www.last.fm/api/account/create). Reading history does not require the user's password or write permissions.
-- **`api_token`**: generate a random secret of at least 32 characters with a password manager. The example is a placeholder. Use the same value in the browser and HA REST requests. Changing it requires restarting the app and updating the HA secret.
-- **`timezone`**: timezone for calendar fields in the listening history. Listening timestamps remain in UTC. Changing the timezone recalculates calendar fields at startup. This does not change the interface language, which is English. Displayed dates use English formatting and the browser's timezone.
-- **`sync_interval_minutes`**: 5–1440 minutes; default 360 (six hours). The interval starts after the previous history sync finishes. You can also sync manually, and import runs on app startup.
-- **`enrich_batch_size`**: 0–100 albums per enrichment batch. Set to 0 to disable metadata enrichment. Large libraries are enriched gradually; the default of 10 limits API usage. History import and recommendations do not wait for the entire enrichment queue to finish.
-- **`enrich_interval_minutes`**: 1–1440 minutes; default 5. Metadata batches run independently between six-hour history updates, and after a manual sync. Enrichment begins after the initial history sync. It does not download listening history again.
-- **Spotify Client ID and Secret** are optional: set both or leave both empty. They enable Spotify album suggestions using Client Credentials authentication. A search result does not verify availability in your market or the correct album edition; you must confirm it. Your Spotify app's API restrictions may prevent search. Manual album links work independently.
+- **Last.fm username/API key**: required. Get an API key from [Last.fm](https://www.last.fm/api/account/create). History reads do not require a password, shared secret or write permissions.
+- **`api_token`**: optional, not used for Ingress login. Leave empty for Ingress-only use. For direct browser/REST access, generate a random secret of at least 32 characters and enable the optional port 8099 mapping in HA. Direct requests require `Authorization: Bearer TOKEN`. The listening database does not contain this token.
+- **`timezone`**: IANA timezone for local calendar fields and listening context. Listening timestamps stay in UTC. Changing it recalculates calendar fields at startup. UI text is English; dates use English formatting in the browser's timezone.
+- **`sync_interval_minutes`**: 5–1440 minutes; default 360 (six hours), measured after the previous history sync. Sync also runs on startup and can be requested manually.
+- **`enrich_batch_size`**: 0–100 albums per metadata batch; default 10. Set 0 to disable enrichment. Large libraries are enriched gradually.
+- **`enrich_interval_minutes`**: 1–1440 minutes; default 5. Metadata batches run between history updates and after a manual sync. The first batch follows the initial history sync. This does not redownload history.
+- **Spotify Client ID/Secret**: optional; set both or leave both empty. They enable catalogue search suggestions using Client Credentials authentication. Each suggestion still needs user confirmation. API restrictions or market availability may prevent a useful result; manually pasted album links work independently.
 
-Credentials stored in SpotifyPlus are not read or copied automatically. This app's Spotify credentials are not used for playback.
+The optional Spotify catalogue credentials are separate from SpotifyPlus authentication. They are not used for playback. Music discovers entities belonging to the HA SpotifyPlus integration, including renamed entities, and calls that existing integration.
 
-## History import and recommendations
+## Discover and play
 
-Import starts automatically at startup, one page at a time. The initial import fixes an upper timestamp and requests up to 200 events per page. The interface shows progress. A large history takes at least several minutes. Wait for the first successful sync before assessing total listening counts.
+1. In **Discover**, choose a genre, optionally adjust minimum years/count, then select **Find a forgotten favorite**.
+2. Preview the artist, album, scrobble count and last-listened date.
+3. Select **Play this album**. Unconfirmed albums show a link to **Album library**, where the Spotify link can be confirmed first.
 
-Each page and its next checkpoint are committed in one SQLite transaction. An interrupted import resumes on the next run. Subsequent updates include a two-day overlap before the previous successful window's upper boundary. Multiple identical timestamp/artist/album/track events are preserved, including across page boundaries. The currently playing track is not counted as a completed scrobble.
+Choosing a genre or opening the page does not search or play automatically. Changing filters clears the previous result. A response arriving after filters changed is discarded. Playback submits an album ID and expected URI; the server checks the current confirmed URI in SQLite before making a SpotifyPlus call.
 
-**Limitation:** synchronization is additive. Deleted scrobbles and corrections to old names are not automatically removed or replaced in the database. Additions backdated more than two days require a separate full-history reimport. Editing history during the initial import can change the page count and stop the import. Changes that do not affect the page count cannot always be detected.
+**Now playing** shows the selected account's track and source and provides pause, resume, next-track and volume controls. Music uses the account's active/default Spotify Connect device. Selecting an account is not a guarantee of a particular physical receiver while another Connect device is active.
 
-**Sync history** queues another cycle. Concurrent cycles are rejected. If a changed page count stopped import, wait for the cycle to finish and call `POST /api/sync/reset`. This restarts pagination for the import window while preserving stored history.
+If your device is available in Spotify Connect, a separate HA power-on action is generally unnecessary: send the SpotifyPlus playback request directly. If unavailable, check its network standby settings and whether it needs to be powered on first. A successful request confirms that HA accepted the action, not that the receiver produced sound.
 
-A forgotten favorite meets the minimum scrobble count and the minimum time since its last listen. The age cutoff uses UTC calendar years; February 29 is clamped to February 28 when necessary. A matching album is selected randomly, so an album may occasionally repeat. Genre filtering is an exact, case-insensitive tag match, not a substring search.
+## Genre context
 
-Scrobbles without an album name remain in history but do not generate album recommendations. Original names are preserved. Spelling variants and different album editions are not merged automatically.
+The cloud loads from the library before any recommendation search. **Around this time** suggests up to 12 tags using local hours within ±2 hours and these fixed listening periods:
 
-## Confirm Spotify album links
+- **Monday–Thursday**
+- **Friday**
+- **Weekend** (Saturday and Sunday)
 
-1. Search for an artist or album in **Album library**.
-2. Open the correct edition in Spotify: **⋯ → Share → Copy album link**.
-3. Paste the full link or `spotify:album:ALBUM_ID` and select **Confirm album link and tags**. You can edit tags at the same time.
+At midnight, observations stay within the same period. All stored years contribute. Tags require at least three contextual scrobbles and rank by `context_scrobbles / sqrt(scrobbles_total + 20)`, balancing time relevance and overall tag size. Sparse context falls back to the library catalogue.
 
-The album ID follows `/album/` in the URL. `?si=...` is a sharing parameter, not the album ID. The app accepts the complete sharing URL and removes query parameters when converting it to a URI.
+**All genres**, **Filter genres** and **Show more genres** expose other choices. The catalogue is limited to 500 tags per ordering in the UI. No genre is prohibited, and time context does not add a hidden album recommendation filter. Custom time periods and household-presence rules are future settings.
 
-Automatic Spotify search suggests one result. Suggestions are always unverified and are not used for automatic playback until confirmed. Check the artist and edition by listening. Confirmation is a user decision, not an API availability check. Enrichment does not overwrite a confirmed URI.
+Counts describe all tagged albums, including unconfirmed ones, not albums eligible under the current discovery filters. Last.fm community tags can include moods or non-genre labels. Tags overlap, and some albums have none. Enrichment or manually added tags make the cloud more complete over time.
 
-History and recommendations work without SpotifyPlus or Spotify API credentials. Playback through Home Assistant requires a working SpotifyPlus integration and Spotify Premium.
+## History import
 
-## Home Assistant: recommend and play an album
+Import starts at startup, using a fixed upper timestamp and pages of up to 200 events. A large history takes at least several minutes. Progress is visible in **Settings → Library status**. Wait for the first successful sync before evaluating total counts.
 
-For a dedicated **Music** sidebar dashboard with a genre cloud, album preview and separate playback button, follow the [Music dashboard guide](../homeassistant/README.md). The simpler script below is an alternative that selects and plays immediately.
+Each page and next checkpoint are committed in one SQLite transaction. An interrupted import resumes automatically. Updates include a two-day overlap before the previous successful upper boundary. Identical timestamp/artist/album/track events preserve the source multiplicity, even across page boundaries. The currently playing track is not counted as a completed scrobble.
 
-Add the full Authorization value to HA's `secrets.yaml`:
+Synchronization is additive. Deleted source scrobbles and corrections to old names are not automatically removed/replaced. Additions backdated beyond the overlap need a separate full-history reimport. A changed page count during an initial import stops pagination; changes without a page-count change cannot always be detected.
 
-```yaml
-lastfm_recommender_authorization: "Bearer SAME_API_TOKEN_AS_THE_APP"
-```
+**Sync history** queues another cycle and rejects overlapping requests. If a changed page count interrupted import, wait for the worker to become idle and call `POST /api/sync/reset` to restart that import window's pagination without deleting existing history.
 
-Add or merge the following into the existing `rest_command` section in HA's `configuration.yaml`:
+A forgotten favorite meets the minimum scrobble count and last-listened age cutoff. The cutoff uses UTC calendar years, clamping February 29 to February 28 as needed. Matching albums are selected randomly and can occasionally repeat. Genre matches are exact and case-insensitive. Original names are preserved; spelling variants and editions are not merged automatically. Missing album names remain in history but do not create album recommendations.
 
-```yaml
-rest_command:
-  lastfm_recommend:
-    url: "http://HA_SERVER_IP:8099/api/recommend?min_years_unheard=3&min_total_scrobbles=10&playable_only=true"
-    method: get
-    headers:
-      Authorization: !secret lastfm_recommender_authorization
-    timeout: 30
-```
+## Confirm Spotify links
 
-Replace the server IP. Do not use `localhost`: HA Core and this app run in separate containers. Check the HA configuration, then reload REST commands or restart HA.
+In **Album library**, search for an artist or album. Open the correct edition in Spotify, select **⋯ → Share → Copy album link**, paste it and select **Confirm album link and tags**. Tags can be edited at the same time.
 
-Create a script under **Settings → Automations & scenes → Scripts → Create script**, then select **⋮ → Edit in YAML**:
+A Spotify album ID follows `/album/`; `?si=...` is a sharing parameter. The app accepts the whole link or `spotify:album:ALBUM_ID`, removing sharing parameters automatically.
 
-```yaml
-alias: Last.fm – Play a forgotten favorite
-mode: single
-sequence:
-  - action: rest_command.lastfm_recommend
-    response_variable: recommendation
-  - variables:
-      album: "{{ recommendation.content.album if recommendation.status == 200 else none }}"
-  - if:
-      - condition: template
-        value_template: "{{ album is not mapping or album.spotify_status != 'confirmed' }}"
-    then:
-      - stop: "No matching confirmed Spotify album. Adjust the filters or confirm album links."
-  - action: spotifyplus.player_media_play_context
-    data:
-      entity_id: media_player.your_spotifyplus_player
-      context_uri: "{{ album.spotify_uri }}"
-```
+Catalogue search suggests one unverified match. Check the artist/edition by listening before confirming. Confirmation is your decision, not an API availability check. Enrichment never overwrites a confirmed URI.
 
-Replace `media_player.your_spotifyplus_player` with your actual SpotifyPlus entity ID, found under **Developer tools → States**. Use the SpotifyPlus account player entity, not the receiver's HEOS entity.
+## Optional REST API
 
-The call targets the active Spotify device, or SpotifyPlus's default when no device is active. **It does not guarantee a particular receiver while another device is active.** To target a specific receiver, test `device_id: "Your Spotify Connect device name"` separately with a valid album URI. The Connect name differs from the HA entity ID.
+Ingress runs on internal port 8098 and accepts only the Supervisor peer `172.30.32.2`; forwarded headers are not authentication. The separate port 8099 listener never trusts Ingress headers and requires the optional app token for private endpoints. Its host mapping is disabled by default on new installs. Existing installs may retain their previous mapping; disable it if not needed.
 
-If your device is available in Spotify Connect, a separate Home Assistant power-on action is generally unnecessary: send the SpotifyPlus playback request directly, as shown above. If the device is unavailable, check its network standby settings and whether it needs to be powered on before retrying.
-
-The API returns `album: null` when no results match, and the script stops without starting playback. Confirm album links in the interface first: the API defaults to confirmed albums only.
-
-## REST API
-
-All `/api/` requests require `Authorization: Bearer TOKEN`. Tokens are not accepted as URL parameters. Responses are JSON; CORS is not enabled.
+Direct HTTP is unencrypted. Use a trusted local network or your own HTTPS reverse proxy and do not expose the port to the internet. POST requests require `Content-Type: application/json`; the API does not enable CORS. Tokens are not accepted in URL parameters.
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /health` | Process health without listening data; no authentication |
-| `GET /api/status` | Counts, last successful sync, checkpoint and errors |
-| `GET /api/albums?q=Illinois&limit=30` | Literal artist/album search, up to 100 results |
-| `GET /api/genres?limit=200` | Library tag counts, contextual rankings and coverage; limit 1–500 |
+| `GET /health` | Process health |
+| `GET /api/session` | Login mode and whether server-side HA access is available; no credentials |
+| `GET /api/status` | Counts, progress, phase, last success and errors |
+| `GET /api/genres?limit=200` | Tag counts, contextual rankings and coverage; limit 1–500 |
+| `GET /api/albums?q=Illinois&limit=30` | Literal artist/album search; limit 1–100 |
 | `GET /api/recommend` | Random matching album or `album: null` |
-| `POST /api/albums/ID` | Confirm with JSON: `{"spotify_uri":"spotify:album:...","tags":["indie folk"]}` |
-| `POST /api/sync` | Queue sync and enrichment; 202 accepted, 409 already running/queued |
-| `POST /api/sync/reset` | Reset an interrupted window's checkpoint and queue another run; preserves history |
+| `POST /api/albums/ID` | Confirm with `{"spotify_uri":"spotify:album:...","tags":["indie folk"]}` |
+| `GET /api/players` | SpotifyPlus players and saved selection |
+| `POST /api/player` | Save selection with `{"entity_id":"media_player.your_spotifyplus_player"}` |
+| `POST /api/play` | Request a confirmed album with `{"album_id":1,"spotify_uri":"spotify:album:..."}` |
+| `POST /api/player/control` | `{"action":"pause"}`, `resume`, `next` or `{"action":"volume","volume":0.2}` |
+| `POST /api/sync` | Queue history sync; 202 accepted, 409 busy/queued |
+| `POST /api/sync/reset` | Reset interrupted pagination and queue sync; preserves history |
 | `GET /api/backup` | Download a consistent SQLite backup |
 
-Recommendation parameters: `min_years_unheard` (0–100, default 3), `min_total_scrobbles` (1–10000000, default 10), `genre` (optional exact tag), and `playable_only` (`true` by default; `false` includes unconfirmed albums). Omitting `tags` when confirming an album preserves its tags; an empty list removes them. Later Last.fm enrichment may add tags again.
+Only `/health`, `/api/session` and static UI files are public on the direct listener. Private endpoints require a token even if forged Ingress headers are supplied. An empty token disables direct private access. All requests on the Ingress listener require the actual Supervisor network peer.
 
-The browser includes unconfirmed recommendations by default so you can add links. The HA playback example always uses `playable_only=true`.
+Recommendation parameters: `min_years_unheard` (0–100, default 3), `min_total_scrobbles` (1–10000000, default 10), `genre` (optional exact tag), `playable_only` (`true` by default). The UI also permits browsing unconfirmed recommendations. Omit `tags` in confirmation to preserve tags; `[]` removes them. Later enrichment may add tags again.
 
-The genre catalogue returns `genres` ordered by album count and `contextual_genres` ordered by time relevance, plus `total_genres`, `has_more`, `tagged_albums`, `total_albums` and `context`. Both lists are independently limited. Context uses the app timezone, current local hour ±2 hours, and Monday–Thursday / Friday / Weekend groups. It ranks tags with at least three contextual scrobbles by `context_scrobbles / sqrt(scrobbles_total + 20)`. Empty context falls back to library tags in the interface. All years contribute. Genre counts include unconfirmed albums and do not apply recommendation age/count filters. No family-presence inference is performed.
+Playback endpoints can only invoke the fixed SpotifyPlus playback action and allowlisted media controls for a selected SpotifyPlus integration member. They do not accept arbitrary HA services. Playback/control calls are not automatically retried after a timeout; inspect the current player state before trying again.
 
 ## Backups and recovery
 
-The database, checkpoints and user confirmations live in `/data/scrobbles.db`. Supervisor manages app options in `/data/options.json`. Include the app in HA backups.
+History, checkpoints, selected player and confirmed links live in `/data/scrobbles.db`. Supervisor manages options and credentials in `/data/options.json`. Include the app in HA backups.
 
-**Download backup** uses the SQLite backup API and works while the service is running. The downloaded database contains private listening history but no API credentials or tokens.
+**Download backup**, under Music's **Settings**, uses SQLite's backup API and works while the app is running. It includes private listening history and the saved player ID but no API keys or Supervisor token.
 
-Prefer restoring the complete app from an HA backup. To restore a database manually: stop the app, preserve a copy of the current data, replace `/data/scrobbles.db` with a consistent backup and remove only the old database's associated `scrobbles.db-wal` and `scrobbles.db-shm` sidecar files before restarting. This requires access to the app's own data directory. Do not copy a live `.db` file separately from its WAL files.
+Prefer restoring the full app from an HA backup. Manual database recovery requires stopping the app, preserving the old data, replacing `/data/scrobbles.db` with a consistent backup and removing only the replaced database's old `scrobbles.db-wal`/`scrobbles.db-shm` files before restarting. Do not copy a live `.db` file separately from WAL files.
 
-The database belongs to one Last.fm username. Changing the username stops startup to avoid mixing different listeners' history. Switching users requires a separate clean database and a backup of the old one.
+The database belongs to one Last.fm username. Switching users stops startup to avoid mixed histories and requires a separate clean database and a backup of the old one.
 
-## First-release status
+## Verification status
 
-No LLM, voice search, separate HACS integration or custom playback OAuth. Filters and album confirmation are available in the app's web interface. Version 0.2.0 also includes a custom Music dashboard card and an HA package; those files are installed separately according to the dashboard guide.
+Offline tests cover history preservation, checkpoint recovery, calendar context, authentication/Ingress peer boundaries, confirmed-URI validation, restricted HA service calls and backup recovery. Browser tests use synthetic history, a fake HA and a prefixed Ingress proxy to exercise login-free access, saved player selection, explicit playback, controls and mobile layout. They never start real playback.
 
-Offline tests cover import resumption and replay, duplicate source events across page boundaries, transaction rollback, timezones, leap days, tag filtering, contextual weekday groups, confirmed-link filtering, authentication, backup recovery and independent enrichment scheduling. Browser testing uses synthetic history and simulated HA services. The user has verified HA OS installation, real-history import and recommendations in version 0.1.0; SpotifyPlus playback also works on the target hardware. The version 0.2.0 update and full dashboard installation still need target-server verification.
+The existing HA OS installation, real history import/recommendations and standalone SpotifyPlus call were verified by the user. The new version's real Supervisor Ingress and Core proxy playback still need verification on the target HA server. No LLM or voice search is included.

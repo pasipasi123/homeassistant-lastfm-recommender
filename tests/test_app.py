@@ -1,5 +1,6 @@
 """Offline behavioral tests for history preservation and the HA API contract."""
 import json
+import io
 import sqlite3
 import sys
 import tempfile
@@ -7,7 +8,7 @@ import threading
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -16,10 +17,12 @@ from api import make_server
 from clients import LastFM, ServiceError
 from database import Database, calendar_cutoff, spotify_uri
 from settings import Settings
+from homeassistant import HomeAssistant, HomeAssistantError
 from worker import Worker
 
 URI = "spotify:album:0S2DmRfqWM51FUprHs0qil"
 TOKEN = "test-token-" + "x" * 32
+PLAYER = "media_player.test_music"
 
 
 def track(timestamp=1435705200, artist="Sufjan Stevens", album="Illinois", name="Chicago"):
@@ -187,15 +190,22 @@ class ApiTests(DatabaseCase):
         settings = Settings("user", "secret", TOKEN)
         self.worker = Worker(self.db, settings, threading.Event())
         self.worker.pending = False
-        self.server = make_server(("127.0.0.1", 0), self.db, self.worker, TOKEN, self.folder.name)
+        self.ha = Mock(spec=HomeAssistant)
+        self.ha.available = True
+        self.ha.players.return_value = [{"entity_id": PLAYER, "name": "Test player", "state": "playing"}]
+        def validate(entity_id):
+            if entity_id != PLAYER:
+                raise HomeAssistantError("Select an available SpotifyPlus player first.")
+        self.ha.validate_player.side_effect = validate
+        self.server = make_server(("127.0.0.1", 0), self.db, self.worker, TOKEN, self.folder.name, home_assistant=self.ha)
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
         self.base = "http://127.0.0.1:" + str(self.server.server_port)
 
-    def request(self, path, method="GET", body=None, token=TOKEN):
-        headers = {"Authorization": "Bearer " + token}
+    def request(self, path, method="GET", body=None, token=TOKEN, headers=None):
+        headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json", **(headers or {})}
         encoded = json.dumps(body).encode() if body is not None else None
         request = Request(self.base + path, headers=headers, data=encoded, method=method)
         try:
@@ -212,12 +222,44 @@ class ApiTests(DatabaseCase):
                              ("/api/sync", "POST"), ("/api/albums/1", "POST"),
                              ("/api/sync/reset", "POST")):
             self.assertEqual(self.request(path, method, token="wrong")[0], 401)
+        for path, method in (("/api/players", "GET"), ("/api/player", "POST"),
+                             ("/api/play", "POST"), ("/api/player/control", "POST")):
+            self.assertEqual(self.request(path, method, token="wrong")[0], 401)
 
     def test_browser_assets_load(self):
-        for path in ("/", "/app.js", "/style.css", "/lastfm-music-card.js"):
+        for path in ("/", "/app.js", "/style.css"):
             code, body = self.request(path, token="")
             self.assertEqual(code, 200)
             self.assertGreater(len(body), 100)
+
+    def test_spoofed_ingress_headers_do_not_bypass_direct_token(self):
+        headers = {"X-Ingress-Path": "/api/hassio_ingress/fake", "X-Forwarded-For": "172.30.32.2",
+                   "X-Remote-User-Id": "admin"}
+        self.assertEqual(self.request("/api/status", token="", headers=headers)[0], 401)
+        session = json.loads(self.request("/api/session", token="", headers=headers)[1])
+        self.assertFalse(session["ingress"])
+
+    def test_player_selection_and_confirmed_database_uri_required_for_playback(self):
+        self.add([track()])
+        album_id = self.db.albums()[0]["id"]
+        payload = {"album_id": album_id, "spotify_uri": URI}
+        self.assertEqual(self.request("/api/play", "POST", payload)[0], 409)
+        self.ha.play.assert_not_called()
+        self.db.confirm_album(album_id, URI)
+        self.assertEqual(self.request("/api/play", "POST", payload)[0], 503)
+        self.assertEqual(self.request("/api/player", "POST", {"entity_id": PLAYER})[0], 200)
+        self.assertEqual(self.db.get_state("spotifyplus_entity"), PLAYER)
+        self.assertEqual(self.request("/api/play", "POST", payload)[0], 200)
+        self.ha.play.assert_called_once_with(PLAYER, URI)
+        self.assertEqual(self.request("/api/play", "POST", {**payload, "spotify_uri": "spotify:album:AAAAAAAAAAAAAAAAAAAAAA"})[0], 409)
+        self.assertEqual(self.ha.play.call_count, 1)
+        self.assertEqual(self.request("/api/player", "POST", {"entity_id": "light.not_a_player"})[0], 503)
+        self.assertEqual(self.db.get_state("spotifyplus_entity"), PLAYER)
+
+    def test_form_posts_rejected_and_controls_require_selected_player(self):
+        self.assertEqual(self.request("/api/sync", "POST", {}, headers={"Content-Type": "text/plain"})[0], 400)
+        self.assertEqual(self.request("/api/player/control", "POST", {"action": "pause"})[0], 503)
+        self.ha.control.assert_not_called()
 
     def test_genre_api_empty_catalogue_counts_and_validation(self):
         code, body = self.request("/api/genres")
@@ -257,6 +299,91 @@ class ApiTests(DatabaseCase):
         path = Path(self.folder.name) / "download.db"
         path.write_bytes(payload)
         self.assertEqual(Database(path).status()["scrobbles"], 1)
+
+
+class IngressTests(DatabaseCase):
+    request = ApiTests.request
+
+    def setUp(self):
+        super().setUp()
+        worker = Worker(self.db, Settings("user", "secret"), threading.Event())
+        self.server = make_server(("127.0.0.1", 0), self.db, worker, "", self.folder.name, ingress=True)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        self.base = "http://127.0.0.1:" + str(self.server.server_port)
+
+    def test_non_supervisor_cannot_access_ingress_even_with_forged_headers(self):
+        for path in ("/", "/health", "/api/session", "/api/status"):
+            self.assertEqual(self.request(path, headers={"X-Forwarded-For": "172.30.32.2",
+                             "X-Ingress-Path": "/api/hassio_ingress/fake"})[0], 403)
+
+    def test_trusted_supervisor_needs_no_api_token(self):
+        with patch("api.INGRESS_PEER", "127.0.0.1"):
+            self.assertEqual(self.request("/api/status", token="")[0], 200)
+            session = json.loads(self.request("/api/session", token="")[1])
+            self.assertTrue(session["ingress"])
+            self.assertNotIn("token", json.dumps(session).lower())
+            self.assertEqual(self.request("/api/sync", "POST", {}, token="")[0], 409)
+
+    def test_empty_token_does_not_open_direct_private_api(self):
+        worker = Worker(self.db, Settings("user", "secret"), threading.Event())
+        server = make_server(("127.0.0.1", 0), self.db, worker, "", self.folder.name)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        self.base = "http://127.0.0.1:" + str(server.server_port)
+        self.assertEqual(self.request("/api/status", token="")[0], 401)
+        self.assertEqual(self.request("/api/status", token="anything")[0], 401)
+
+    def test_settings_allow_no_token_but_reject_a_short_configured_token(self):
+        path = Path(self.folder.name) / "options.json"
+        options = {"lastfm_username": "user", "lastfm_api_key": "lastfm-test-key"}
+        path.write_text(json.dumps(options), encoding="utf-8")
+        self.assertEqual(Settings.read(path).api_token, "")
+        path.write_text(json.dumps({**options, "api_token": "short"}), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            Settings.read(path)
+
+
+class HomeAssistantTests(unittest.TestCase):
+    def test_discovery_uses_integration_membership_instead_of_entity_name(self):
+        client = HomeAssistant("supervisor-secret")
+        responses = [io.BytesIO(json.dumps([PLAYER, "switch.ignore", "media_player.bad/path", "media_player.disabled"]).encode()),
+                     io.BytesIO(json.dumps({"state": "playing", "attributes": {"friendly_name": "Music"}}).encode()),
+                     HTTPError("http://supervisor/core/api/states/media_player.disabled", 404, "Not Found", {}, None)]
+        with patch("homeassistant.urlopen", side_effect=responses) as request:
+            players = client.players()
+        self.assertEqual(players[0]["entity_id"], PLAYER)
+        self.assertEqual(request.call_count, 3)
+        first = request.call_args_list[0].args[0]
+        self.assertEqual(first.full_url, "http://supervisor/core/api/template")
+        self.assertIn("integration_entities('spotifyplus')", json.loads(first.data)["template"])
+
+    def test_only_fixed_spotifyplus_playback_service_is_called(self):
+        client = HomeAssistant("supervisor-secret")
+        with patch.object(client, "validate_player"), patch.object(client, "_request") as request:
+            client.play(PLAYER, URI)
+        request.assert_called_once_with("/services/spotifyplus/player_media_play_context",
+                                        {"entity_id": PLAYER, "context_uri": URI})
+
+    def test_timeout_is_not_retried_and_secrets_are_not_reported(self):
+        client = HomeAssistant("supervisor-secret")
+        with patch("homeassistant.urlopen", side_effect=TimeoutError("supervisor-secret")) as request:
+            with self.assertRaises(HomeAssistantError) as error:
+                client._request("/services/spotifyplus/player_media_play_context", {})
+        self.assertEqual(request.call_count, 1)
+        self.assertNotIn("supervisor-secret", str(error.exception))
+
+    def test_control_allowlist_and_volume_range(self):
+        client = HomeAssistant("secret")
+        with patch.object(client, "validate_player"), patch.object(client, "_request") as request:
+            for action, value in (("turn_on", None), ("volume", 2), ("volume", float("nan"))):
+                with self.assertRaises(ValueError):
+                    client.control(PLAYER, action, value)
+            request.assert_not_called()
+            client.control(PLAYER, "volume", 0.15)
+            request.assert_called_once_with("/services/media_player/volume_set", {"entity_id": PLAYER, "volume_level": 0.15})
 
 
 class WorkerTests(DatabaseCase):

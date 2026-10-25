@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1
+
+- Open Music directly in the HA sidebar through Ingress, using HA login.
+- Select and save a discovered SpotifyPlus player in Music Settings.
+- Preview and play confirmed albums without scripts, packages or custom dashboard resources.
+- Add now-playing information, pause/resume, next-track and volume controls through the Core proxy.
+- Keep direct token-authenticated REST access optional; disable its host port by default for new installs.
+- Restrict Ingress to the Supervisor peer, keep credentials server-side and validate confirmed album URIs before playback.
+- Replace the manual dashboard installation files with a short Ingress setup guide.
+
 ## 0.2.0
 
 - Genre-first Music dashboard card with library tag counts, search and preferred genres.

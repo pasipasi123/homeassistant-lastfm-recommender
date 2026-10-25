@@ -3,33 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Last.fm – Forgotten Favorites</title>
+  <title>Music – Last.fm Recommender</title>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
 <body>
 <main>
-  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.2</p>
-    <h1>Forgotten favorites</h1><p>Your listening history, rediscovered.</p></header>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.2.1</p>
+    <h1>Music</h1><p>Your listening history, rediscovered.</p></header>
+  <nav aria-label="Music pages">
+    <button id="nav-music" type="button" aria-pressed="true">Discover</button>
+    <button id="nav-library" type="button" aria-pressed="false">Album library</button>
+    <button id="nav-settings" type="button" aria-pressed="false">Settings</button>
+  </nav>
   <form id="auth" class="panel inline">
     <label>API token <input id="token" type="password" autocomplete="off" required minlength="32"
       placeholder="Use the api_token from the app settings"></label>
     <button>Connect</button><button id="logout" type="button" class="secondary">Forget token</button>
   </form>
   <p id="message" role="status" aria-live="polite"></p>
-  <section class="panel" aria-labelledby="status-heading">
+  <section id="status-section" class="panel" aria-labelledby="status-heading" hidden>
     <h2 id="status-heading">Library status</h2>
     <p id="status">Connect to view the history import status.</p>
     <div class="inline"><button id="sync" type="button">Sync history</button>
       <button id="backup" type="button" class="secondary">Download backup</button></div>
   </section>
-  <section class="panel" aria-labelledby="recommend-heading">
+  <section id="player-settings" class="panel" aria-labelledby="player-heading" hidden>
+    <h2 id="player-heading">SpotifyPlus player</h2>
+    <p>Choose your SpotifyPlus account player once. Playback uses that account's active or default Spotify Connect device.</p>
+    <form id="player-form" class="inline">
+      <label>Player<select id="player-select" aria-label="SpotifyPlus player" required><option value="">Select a player</option></select></label>
+      <button id="save-player">Save player</button>
+      <button id="refresh-players" type="button" class="secondary">Refresh players</button>
+    </form>
+    <p id="player-setup"></p>
+  </section>
+  <section id="discovery-section" class="panel" aria-labelledby="recommend-heading">
     <h2 id="recommend-heading">Find an album</h2>
     <p>Choose a genre first, then find a forgotten favorite.</p>
     <label>Genre suggestions
       <select id="genre-context"><option>Around this time</option><option>All genres</option></select>
     </label>
+    <label>Filter genres<input id="genre-search" type="search" placeholder="Search all library tags" maxlength="100"></label>
     <div id="genres" class="genre-cloud" role="group" aria-label="Choose a genre"></div>
+    <button id="more-genres" type="button" class="secondary" hidden>Show more genres</button>
     <p id="genre-status"></p>
     <form id="recommend">
       <div class="filters">
@@ -42,13 +59,23 @@
     </form>
     <div id="recommendation" aria-live="polite"></div>
   </section>
-  <section class="panel" aria-labelledby="albums-heading">
+  <section id="now-playing" class="panel" aria-labelledby="now-playing-heading">
+    <h2 id="now-playing-heading">Now playing</h2>
+    <p id="player-state">Choose your SpotifyPlus player in Settings to enable playback.</p>
+    <div id="player-controls" class="inline">
+      <button id="player-pause" type="button" class="secondary" disabled>Pause</button>
+      <button id="player-resume" type="button" class="secondary" disabled>Resume</button>
+      <button id="player-next" type="button" class="secondary" disabled>Next track</button>
+      <label>Volume<input id="player-volume" type="range" min="0" max="100" step="1" value="0" disabled></label>
+    </div>
+  </section>
+  <section id="library-section" class="panel" aria-labelledby="albums-heading" hidden>
     <h2 id="albums-heading">Album library</h2>
     <p>Confirm the Spotify link for the correct album edition. Automatic playback uses confirmed links only.</p>
     <form id="search" class="inline"><label>Artist or album<input id="query" maxlength="200" placeholder="Search your library"></label><button>Search</button></form>
     <div id="albums"></div>
   </section>
-  <footer>Recommendations and history stay on your home server. Playback is handled by a SpotifyPlus script in Home Assistant.</footer>
+  <footer>Recommendations and history stay on your home server. Playback uses your existing SpotifyPlus integration.</footer>
 </main>
 </body>
 </html>

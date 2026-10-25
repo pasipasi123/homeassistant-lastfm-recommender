@@ -203,6 +203,10 @@ class Database:
                 (normalized(query), normalized(query), limit)).fetchall()
             return [self.album_result(conn, row) for row in rows]
 
+    def album(self, album_id):
+        with self.connect() as conn:
+            return self.album_result(conn, conn.execute("SELECT * FROM albums WHERE id=?", (album_id,)).fetchone())
+
     def recommend(self, min_years=3, min_scrobbles=10, genre="", playable_only=True):
         with self.connect() as conn:
             row = conn.execute("""SELECT a.* FROM albums a

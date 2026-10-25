@@ -1,12 +1,14 @@
 """Home Assistant app entrypoint; also supports an isolated local development run."""
 import argparse
 import logging
+import os
 import signal
 import threading
 from pathlib import Path
 
 from api import make_server
 from database import Database
+from homeassistant import HomeAssistant
 from settings import Settings
 from worker import Worker
 
@@ -17,12 +19,13 @@ def main():
     parser.add_argument("--data", default="/data")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8099)
+    parser.add_argument("--ingress-port", type=int, default=8098)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
         settings = Settings.read(args.options)
     except (ValueError, KeyError, TypeError, OSError):
-        logging.error("Invalid app options: set Last.fm credentials, a 32+ character api_token, "
+        logging.error("Invalid app options: set Last.fm credentials, an optional 32+ character api_token, "
                       "a valid timezone, interval and matching optional Spotify credentials")
         return 1
     data = Path(args.data)
@@ -35,8 +38,15 @@ def main():
     db.set_state("lastfm_username", settings.lastfm_username)
     stop = threading.Event()
     worker = Worker(db, settings, stop)
-    server = make_server((args.host, args.port), db, worker, settings.api_token, data)
+    ha = HomeAssistant(os.environ.get("SUPERVISOR_TOKEN", ""))
+    server = make_server((args.host, args.port), db, worker, settings.api_token, data, home_assistant=ha)
     server.timeout = 0.5
+    try:
+        ingress_server = make_server((args.host, args.ingress_port), db, worker, settings.api_token,
+                                     data, home_assistant=ha, ingress=True)
+    except OSError:
+        server.server_close()
+        raise
 
     def shutdown(_signum, _frame):
         stop.set()
@@ -46,7 +56,9 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     thread = threading.Thread(target=worker.run, name="sync", daemon=True)
     thread.start()
-    logging.info("Last.fm Recommender listening on port %s", args.port)
+    ingress_thread = threading.Thread(target=ingress_server.serve_forever, name="ingress", daemon=True)
+    ingress_thread.start()
+    logging.info("Music ingress listening on internal port %s; optional token API on %s", args.ingress_port, args.port)
     try:
         while not stop.is_set():
             server.handle_request()
@@ -54,6 +66,9 @@ def main():
         stop.set()
         worker.wake.set()
         server.server_close()
+        ingress_server.shutdown()
+        ingress_server.server_close()
+        ingress_thread.join(timeout=5)
         thread.join(timeout=35)
     return 0
 

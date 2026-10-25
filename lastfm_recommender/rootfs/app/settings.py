@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 class Settings:
     lastfm_username: str
     lastfm_api_key: str
-    api_token: str
+    api_token: str = ""
     timezone: str = "Europe/Helsinki"
     sync_interval_minutes: int = 360
     enrich_batch_size: int = 10
@@ -24,8 +24,8 @@ class Settings:
                           if key in cls.__dataclass_fields__})
         if not settings.lastfm_username.strip() or not settings.lastfm_api_key.strip():
             raise ValueError("Set lastfm_username and lastfm_api_key in app options")
-        if len(settings.api_token) < 32:
-            raise ValueError("Set api_token to a random secret of at least 32 characters")
+        if settings.api_token and len(settings.api_token) < 32:
+            raise ValueError("Leave api_token empty for ingress-only access, or use at least 32 characters")
         ZoneInfo(settings.timezone)
         if not 5 <= settings.sync_interval_minutes <= 1440:
             raise ValueError("sync_interval_minutes must be between 5 and 1440")

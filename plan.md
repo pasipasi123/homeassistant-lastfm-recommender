@@ -2,6 +2,8 @@
 
 **Language requirement:** All application UI text, messages, user documentation and Home Assistant script labels must be in English. Existing entity IDs and original music metadata must not be translated.
 
+**Current UI direction (0.2.1):** Use the app's own Music page through HA Ingress. HA handles login; users enable Show in sidebar and select their SpotifyPlus player in Music Settings. No dashboard package, custom card or separately created HA token is required. Playback uses the Supervisor Core API proxy. Direct REST access remains optional and token-protected. The version 0.2.0 manual dashboard files are superseded by this approach; the genre/context model stays the same. Target-server Ingress and Core playback verification is still required.
+
 ## 1. Yleiskatsaus & Tavoite
 Tämän Home Assistant Appin (uusi 2026.2+ -standardi, aiemmin Add-on) tavoitteena on analysoida 20 vuoden Last.fm-kuunteluhistoriaa (n. 300 000 scrobblea) ja tarjota Home Assistantin kautta älykkäitä musiikkisuosituksia ("unohtuneet helmet" ja kontekstihaut) suoraan HEOS-vahvistimelle Spotifyn kautta.
 
