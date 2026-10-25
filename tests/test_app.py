@@ -270,6 +270,15 @@ class ApiTests(DatabaseCase):
         self.assertEqual(self.request("/api/player/control", "POST", {"action": "pause"})[0], 503)
         self.ha.control.assert_not_called()
 
+    def test_volume_target_rejects_a_changed_selected_player(self):
+        self.db.set_state("spotifyplus_entity", PLAYER)
+        payload = {"action": "volume", "volume": 0.32, "expected_entity": "media_player.previous"}
+        self.assertEqual(self.request("/api/player/control", "POST", payload)[0], 409)
+        self.ha.control.assert_not_called()
+        payload["expected_entity"] = PLAYER
+        self.assertEqual(self.request("/api/player/control", "POST", payload)[0], 200)
+        self.ha.control.assert_called_once_with(PLAYER, "volume", 0.32)
+
     def test_genre_api_empty_catalogue_counts_and_validation(self):
         code, body = self.request("/api/genres")
         self.assertEqual(code, 200)

@@ -178,7 +178,11 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                 action = body.get("action")
                 if not isinstance(action, str):
                     raise ValueError("Expected action")
-                home_assistant.control(self.selected_player(), action, body.get("volume"))
+                entity_id = self.selected_player()
+                if "expected_entity" in body and body["expected_entity"] != entity_id:
+                    self.send_json(409, {"error": "The selected player changed. Refresh the player before adjusting volume."})
+                    return
+                home_assistant.control(entity_id, action, body.get("volume"))
                 self.send_json(200, {"requested": True})
             elif path == "/api/genres" and method == "GET":
                 self.send_json(200, db.genres(integer(param("limit", 200), "limit", 1, 500)))

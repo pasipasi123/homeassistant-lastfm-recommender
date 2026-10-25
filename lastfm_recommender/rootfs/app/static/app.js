@@ -12,6 +12,7 @@ let playerVolume = null;
 let controlBusy = false;
 let controlError = "";
 let volumeConfig = {min: 0, max: 100, step: 1, decimals: 1};
+let volumeState = {target: null, sending: false, awaiting: null, reported: null, revision: 0, timer: null};
 let genreData = null;
 let expandedGenres = false;
 let recommendationGeneration = 0;
@@ -266,10 +267,69 @@ async function loadAlbums() {
 function updatePlaybackButtons() {
   for (const button of document.querySelectorAll(".play-album")) button.disabled = !playerReady || button.dataset.confirmed !== "true";
   for (const id of ["player-pause", "player-resume", "player-next"]) $(`#${id}`).disabled = !playerReady || controlBusy;
-  const volumeReady = playerReady && playerVolume !== null && !controlBusy;
+  const volumeReady = playerReady && playerVolume !== null;
   $("#player-volume").disabled = !volumeReady;
   $("#player-volume-down").disabled = !volumeReady || playerVolume <= 0;
   $("#player-volume-up").disabled = !volumeReady || playerVolume >= 1;
+}
+function renderVolume() {
+  const display = playerVolume === null ? null : volumeConfig.min + playerVolume * (volumeConfig.max - volumeConfig.min);
+  $("#volume-value").textContent = display === null ? "—" : display.toFixed(volumeConfig.decimals);
+  $("#volume-value").setAttribute("aria-busy", String(volumeState.sending || volumeState.target !== null || Boolean(volumeState.awaiting)));
+  if (display !== null && document.activeElement !== $("#player-volume")) $("#player-volume").value = display;
+  updatePlaybackButtons();
+}
+function resetVolume() {
+  clearTimeout(volumeState.timer);
+  volumeState = {target: null, sending: false, awaiting: null, reported: null, revision: 0, timer: null};
+}
+function scheduleVolumeRead(state) {
+  clearTimeout(state.timer);
+  if (state !== volumeState || !state.awaiting || state.sending) return;
+  state.timer = setTimeout(async () => {
+    if (state !== volumeState) return;
+    await loadPlayers();
+    scheduleVolumeRead(state);
+  }, 500);
+}
+function queueVolume(value) {
+  if (!playerReady || playerVolume === null || !Number.isFinite(value)) return;
+  const state = volumeState;
+  const target = Math.round(Math.max(0, Math.min(1, value)) * 1e8) / 1e8;
+  if (target === playerVolume) return;
+  state.target = target; state.awaiting = null; state.revision++;
+  playerVolume = target; renderVolume();
+  sendVolume(state);
+}
+async function sendVolume(state) {
+  if (state.sending) return;
+  state.sending = true; renderVolume();
+  try {
+    while (state === volumeState && state.target !== null) {
+      const target = state.target;
+      state.target = null;
+      await api("api/player/control", {method:"POST", body:JSON.stringify({
+        action:"volume", volume:target, expected_entity:selectedPlayer
+      })});
+      if (state !== volumeState) return;
+      state.awaiting = {target, until:performance.now() + 5000};
+    }
+    if (controlError && $("#message").textContent === controlError) message("");
+    controlError = "";
+  } catch (error) {
+    if (state !== volumeState) return;
+    // A failed write is never retried, including clicks queued behind it.
+    state.target = null; state.awaiting = null;
+    playerVolume = state.reported;
+    controlError = error.message; message(error.message, true);
+  } finally {
+    state.sending = false;
+    if (state === volumeState) {
+      renderVolume();
+      await loadPlayers();
+      scheduleVolumeRead(state);
+    }
+  }
 }
 async function loadPlayers() {
   if (!playbackAvailable) {
@@ -278,31 +338,41 @@ async function loadPlayers() {
   }
   if (playerLoading) return;
   playerLoading = true;
+  const stateAtStart = volumeState;
+  const revision = stateAtStart.revision;
   try {
-    const data = await api("api/players"); selectedPlayer = data.selected_entity;
+    const data = await api("api/players");
+    if (selectedPlayer !== data.selected_entity) resetVolume();
+    selectedPlayer = data.selected_entity;
     const select = $("#player-select"); select.replaceChildren();
     const placeholder = element("option", "Select a SpotifyPlus player", select); placeholder.value = "";
     for (const player of data.players) { const option = element("option", `${player.name} (${player.entity_id})`, select); option.value = player.entity_id; }
     select.value = playerDraft ?? selectedPlayer ?? "";
     const player = data.players.find(item => item.entity_id === selectedPlayer);
     playerReady = Boolean(player && player.state !== "unavailable");
-    playerVolume = Number.isFinite(player?.volume_level) && player.volume_level >= 0 && player.volume_level <= 1 ? player.volume_level : null;
-    const displayVolume = playerVolume === null ? null : volumeConfig.min + playerVolume * (volumeConfig.max - volumeConfig.min);
-    $("#volume-value").textContent = displayVolume === null ? "—" : displayVolume.toFixed(volumeConfig.decimals);
+    const reported = Number.isFinite(player?.volume_level) && player.volume_level >= 0 && player.volume_level <= 1 ? player.volume_level : null;
+    const state = volumeState;
+    state.reported = reported;
+    const currentRead = state !== stateAtStart || revision === state.revision;
+    if (currentRead && !state.sending && state.target === null) {
+      if (state.awaiting && (performance.now() >= state.awaiting.until ||
+          (reported !== null && Math.abs(reported - state.awaiting.target) < 0.00001))) state.awaiting = null;
+      if (!state.awaiting) playerVolume = reported;
+    }
     $("#player-setup").textContent = !data.players.length
       ? "No SpotifyPlus players found. Install and configure SpotifyPlus in Home Assistant, then refresh players."
       : player ? `Saved player: ${player.name}.` : "Select and save your SpotifyPlus player to enable playback.";
     $("#player-state").textContent = player
       ? `${player.title || "No track playing"}${player.artist ? " — " + player.artist : ""} · ${player.source || player.name} · ${player.state}`
       : "Choose your SpotifyPlus player in Settings to enable playback.";
-    if (displayVolume !== null && document.activeElement !== $("#player-volume")) $("#player-volume").value = displayVolume;
-  } catch (error) { playerReady = false; playerVolume = null; $("#volume-value").textContent = "—"; message(error.message, true); }
-  finally { playerLoading = false; updatePlaybackButtons(); }
+  } catch (error) { playerReady = false; resetVolume(); playerVolume = null; message(error.message, true); }
+  finally { playerLoading = false; renderVolume(); scheduleVolumeRead(volumeState); }
 }
 $("#player-select").addEventListener("change", event => { playerDraft = event.target.value; });
 $("#player-form").addEventListener("submit", async event => {
   event.preventDefault();
   try {
+    resetVolume();
     await api("api/player", {method:"POST", body:JSON.stringify({entity_id:$("#player-select").value})});
     playerDraft = null; message("SpotifyPlus player saved."); await loadPlayers();
   } catch (error) { message(error.message, true); }
@@ -311,10 +381,10 @@ $("#refresh-players").addEventListener("click", loadPlayers);
 for (const action of ["pause", "resume", "next"]) {
   $(`#player-${action}`).addEventListener("click", () => control(action));
 }
-$("#player-volume").addEventListener("change", event => control("volume",
+$("#player-volume").addEventListener("change", event => queueVolume(
   (Number(event.target.value) - volumeConfig.min) / (volumeConfig.max - volumeConfig.min)));
-$("#player-volume-up").addEventListener("click", () => control("volume_up"));
-$("#player-volume-down").addEventListener("click", () => control("volume_down"));
+$("#player-volume-up").addEventListener("click", () => queueVolume(playerVolume + volumeConfig.step / (volumeConfig.max - volumeConfig.min)));
+$("#player-volume-down").addEventListener("click", () => queueVolume(playerVolume - volumeConfig.step / (volumeConfig.max - volumeConfig.min)));
 async function control(action, volume) {
   if (controlBusy) return;
   controlBusy = true; updatePlaybackButtons();
@@ -337,6 +407,7 @@ $("#auth").addEventListener("submit", async event => {
   try { await connect(); message("Connected."); } catch (error) { message(error.message, true); }
 });
 $("#logout").addEventListener("click", () => {
+  resetVolume();
   refreshErrors.clear(); metadataErrors = [];
   token = ""; sessionStorage.removeItem("lastfm-token"); $("#token").value = "";
   $("#albums").replaceChildren(); clearRecommendation();

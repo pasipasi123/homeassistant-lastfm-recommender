@@ -121,16 +121,70 @@ const path = require('node:path');
       failedWrites++;
       return route.fulfill({status:502,contentType:'text/plain',body:'502: Bad Gateway'});
     });
-    await music.getByRole('button',{name:'Increase volume by 1.0',exact:true}).click();
+    await music.evaluate(()=>{
+      for(let i=0;i<3;i++) document.querySelector('#player-volume-up').click();
+    });
+    assert.equal(await music.locator('#volume-value').innerText(),'23.0');
     await music.waitForFunction(()=>document.querySelector('#message').textContent.includes('Player control: HTTP 502, expected a JSON response'));
     assert.equal(failedWrites,1);
     assert.equal(await music.locator('#volume-value').innerText(),'20.0');
     await music.unroute('**/api/player/control');
     await music.getByRole('button',{name:'Increase volume by 1.0',exact:true}).click();
     await music.waitForFunction(()=>document.querySelector('#volume-value').textContent==='21.0');
-    assert.equal(await music.locator('#message').innerText(),'');
+    await music.waitForFunction(()=>document.querySelector('#message').textContent==='');
     await music.getByRole('button',{name:'Decrease volume by 1.0',exact:true}).click();
     await music.waitForFunction(()=>document.querySelector('#volume-value').textContent==='20.0');
+    await music.waitForFunction(()=>document.querySelector('#volume-value').getAttribute('aria-busy')==='false');
+    // Hold the first volume response while rapid clicks update the local target.
+    const volumeWrites = [];
+    let releaseFirst, firstApplied;
+    const firstGate = new Promise(resolve=>{releaseFirst=resolve;});
+    const applied = new Promise(resolve=>{firstApplied=resolve;});
+    let activeWrites=0, maxWrites=0, staleReads=0;
+    await music.route('**/api/player/control',async route=>{
+      const body = route.request().postDataJSON();
+      volumeWrites.push(body); activeWrites++; maxWrites=Math.max(maxWrites,activeWrites);
+      const response = await route.fetch();
+      if(volumeWrites.length===1) {firstApplied(); await firstGate;}
+      activeWrites--;
+      await route.fulfill({response});
+    });
+    await music.route('**/api/players',async route=>{
+      const response=await route.fetch();
+      const data=await response.json();
+      if(volumeWrites.length>=2 && staleReads<2) {
+        staleReads++;
+        data.players=data.players.map(player=>({...player,volume_level:0.21}));
+      }
+      await route.fulfill({response,json:data});
+    });
+    await music.evaluate(()=>{
+      for(let i=0;i<5;i++) document.querySelector('#player-volume-up').click();
+    });
+    assert.equal(await music.locator('#volume-value').innerText(),'25.0');
+    assert.equal(await music.getByRole('button',{name:'Increase volume by 1.0',exact:true}).isEnabled(),true);
+    await applied;
+    await music.evaluate(()=>loadPlayers());
+    assert.equal(await music.locator('#volume-value').innerText(),'25.0');
+    assert.equal(volumeWrites.length,1);
+    await music.evaluate(()=>{
+      for(let i=0;i<2;i++) document.querySelector('#player-volume-down').click();
+    });
+    assert.equal(await music.locator('#volume-value').innerText(),'23.0');
+    releaseFirst();
+    await music.waitForFunction(()=>document.querySelector('#volume-value').getAttribute('aria-busy')==='false');
+    assert.deepEqual(volumeWrites.map(body=>body.volume),[0.21,0.23]);
+    assert.equal(volumeWrites.every(body=>body.action==='volume'&&body.expected_entity==='media_player.demo_music'),true);
+    assert.equal(maxWrites,1);
+    assert.equal(staleReads,2);
+    assert.equal(await music.locator('#volume-value').innerText(),'23.0');
+    await music.unroute('**/api/player/control');
+    await music.unroute('**/api/players');
+    await music.evaluate(()=>{
+      for(let i=0;i<3;i++) document.querySelector('#player-volume-down').click();
+    });
+    await music.waitForFunction(()=>document.querySelector('#volume-value').getAttribute('aria-busy')==='false');
+    assert.equal(await music.locator('#volume-value').innerText(),'20.0');
     await mkdir('.local-data',{recursive:true});
     await music.screenshot({path:'.local-data/music-ingress.png',fullPage:true});
     await music.setViewportSize({width:390,height:844});
