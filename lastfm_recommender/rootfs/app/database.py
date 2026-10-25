@@ -65,6 +65,7 @@ class Database:
                 );
                 CREATE INDEX IF NOT EXISTS scrobbles_time ON scrobbles(timestamp);
                 CREATE INDEX IF NOT EXISTS scrobbles_album ON scrobbles(album_id);
+                CREATE INDEX IF NOT EXISTS scrobbles_context ON scrobbles(day_of_week, hour, album_id);
                 CREATE INDEX IF NOT EXISTS albums_last ON albums(last_listened_at);
                 CREATE TABLE IF NOT EXISTS album_tags (
                     album_id INTEGER NOT NULL REFERENCES albums(id), tag TEXT NOT NULL,
@@ -218,6 +219,55 @@ class Database:
                                     "last_listened_at": result["last_listened_at"],
                                     "min_years_unheard": min_years}
             return result
+
+    def genres(self, limit=200, now=None):
+        """Rank tags by local listening period/hour without excluding other music."""
+        local = (now or datetime.now(timezone.utc)).astimezone(self.tz)
+        if local.isoweekday() <= 4:
+            weekdays, period = (1, 2, 3, 4), "Monday–Thursday"
+        elif local.isoweekday() == 5:
+            weekdays, period = (5,), "Friday"
+        else:
+            weekdays, period = (6, 7), "Weekend"
+        # Keep Friday and weekend observations separate even near midnight.
+        pairs = set()
+        for day in weekdays:
+            for offset in range(-2, 3):
+                day_shift, hour = divmod(local.hour + offset, 24)
+                shifted_day = (day - 1 + day_shift) % 7 + 1
+                if shifted_day in weekdays:
+                    pairs.add((shifted_day, hour))
+        slots = [value for pair in sorted(pairs) for value in pair]
+        where = " OR ".join(["(day_of_week=? AND hour=?)"] * len(pairs))
+        with self.connect() as conn:
+            rows = [dict(row) for row in conn.execute(f"""WITH context AS (
+                SELECT album_id, COUNT(*) AS listens FROM scrobbles
+                WHERE {where} GROUP BY album_id
+                ) SELECT t.tag AS name, COUNT(*) AS album_count,
+                SUM(CASE WHEN a.spotify_status='confirmed' THEN 1 ELSE 0 END) AS playable_album_count,
+                SUM(a.scrobbles_total) AS scrobbles_total,
+                SUM(COALESCE(c.listens, 0)) AS context_scrobbles,
+                SUM(CASE WHEN c.listens > 0 THEN 1 ELSE 0 END) AS context_album_count
+                FROM album_tags t JOIN albums a ON a.id=t.album_id
+                LEFT JOIN context c ON c.album_id=a.id
+                WHERE t.tag != '' AND length(t.tag) <= 100
+                GROUP BY t.tag ORDER BY album_count DESC, t.tag""", slots)]
+            for row in rows:
+                # Balance time-specific listening against a tag's overall size;
+                # shrink tiny samples so one old scrobble cannot dominate.
+                row["context_score"] = round(row["context_scrobbles"] / (row["scrobbles_total"] + 20) ** 0.5, 4)
+            contextual = sorted((row for row in rows if row["context_scrobbles"] >= 3),
+                                key=lambda row: (-row["context_score"], -row["context_scrobbles"], row["name"]))
+            return {"genres": rows[:limit], "contextual_genres": contextual[:limit],
+                    "total_genres": len(rows), "has_more": len(rows) > limit,
+                    "context": {"weekday": ("Monday", "Tuesday", "Wednesday", "Thursday",
+                                             "Friday", "Saturday", "Sunday")[local.weekday()], "hour": local.hour,
+                                "period": period, "weekdays": list(weekdays),
+                                "timezone": str(self.tz), "window_hours": 2,
+                                "matching_genres": len(contextual)},
+                    "tagged_albums": conn.execute(
+                        "SELECT COUNT(DISTINCT album_id) FROM album_tags").fetchone()[0],
+                    "total_albums": conn.execute("SELECT COUNT(*) FROM albums").fetchone()[0]}
 
     def confirm_album(self, album_id, uri, tags=None):
         uri = spotify_uri(uri)

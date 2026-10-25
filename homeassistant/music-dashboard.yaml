@@ -1,0 +1,25 @@
+# Paste into the Raw configuration editor of a new Music dashboard.
+title: Music
+views:
+  - title: Music
+    path: music
+    icon: mdi:music
+    cards:
+      - type: custom:lastfm-music-card
+        title: Forgotten favorites
+        max_genres: 12
+        # Optional: these are promoted only when present in your library.
+        preferred_genres:
+          - indie folk
+          - jazz
+          - electronic
+          - classical
+      - type: entities
+        title: Discovery filters
+        show_header_toggle: false
+        entities:
+          - input_select.lastfm_genre_context
+          - input_number.lastfm_years_unheard
+          - input_number.lastfm_min_scrobbles
+      - type: media-control
+        entity: media_player.your_spotifyplus_player

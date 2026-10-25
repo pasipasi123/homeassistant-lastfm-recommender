@@ -100,27 +100,29 @@ Käyttäjä voi halutessaan kytkeä LLM API -avaimen (esim. Gemini Flash / GPT-6
 - Toteutettu Last.fm-rikastus, valinnainen Spotify-hakuehdotus, käyttäjän vahvistamat albumi-URI:t, tagit ja suodatetut satunnaissuositukset. Spotify-osumia ei automaattisesti vahvisteta.
 - Toteutettu paikallinen selainkäyttöliittymä ja Bearer-tokenilla suojattu HTTP-rajapinta portissa 8099, tilatiedot ja SQLite backup API -varmuuskopio. Ei ingressiä ensiversiossa.
 - HA:n REST-komento ja SpotifyPlus-toistoskripti dokumentoitu `lastfm_recommender/DOCS.md`-tiedostossa. Toisto on erillään suosittelijasovelluksesta.
-- Automaattiset offline-testit ja synteettisellä historialla ajettu selaintesti kattavat keskeisen toimintopolun. Konttibuild, oikean historian tuonti ja HA:n REST-skriptin kokonaiskoe odottavat käyttöönottoa; tällä kehityskoneella ei ole Dockeria.
-- Vielä avoinna: Marantzin nimenomainen laitekohdistus toisen Spotify-laitteen ollessa aktiivinen, vanhojen lähdemuutosten sovitus ja laajempi albumivarianttien tunnistus. Lisäävä synkronointi ei poista lähteestä poistettuja tapahtumia.
-- Myöhemmäksi jätetty: LLM, äänihaku, erillinen HACS-integraatio ja mukautettu HA-dashboard-kortti.
+- Automaattiset offline-testit ja synteettisellä historialla ajettu selaintesti kattavat keskeisen toimintopolun. GitHub Actionsin konttibuild onnistui. Käyttäjä on vahvistanut HA OS -asennuksen, oikean historian tuonnin ja suositukset toimiviksi. HA:n REST-skriptin kokonaiskoe on vielä avoinna.
+- Vielä avoinna: vahvistimen nimenomainen laitekohdistus toisen Spotify-laitteen ollessa aktiivinen, vanhojen lähdemuutosten sovitus ja laajempi albumivarianttien tunnistus. Lisäävä synkronointi ei poista lähteestä poistettuja tapahtumia.
+- Versioon 0.2.0 toteutettu Music-dashboardin kortti, HA-paketti ja genre-API. Pilvi näyttää genret ennen suositushakua, oletuksena 12 aikaan sopivaa genreä. Viikonpäiväryhmät ovat ma–to, perjantai ja la–su; kellonaikaikkuna ±2 tuntia. All genres ja haku avaavat muita tageja. Valinta ei käynnistä hakua tai toistoa automaattisesti. Ehdotusta voi esikatsella ja toisto käynnistetään erikseen.
+- Genrejen rikastus toimii kymmenen albumin erissä oletuksena viiden minuutin välein; historian päivitys pysyy kuudessa tunnissa. Olemassa oleva tietokanta säilyy päivityksessä.
+- Myöhemmäksi jätetty: käyttäjän määrittelemät viikonpäivä-/kellonaikajaksot, perheen läsnäoloon kytketyt kontekstit, LLM, äänihaku ja erillinen HACS-integraatio. Version 0.2.0 dashboard-asennus ja HA-kokonaiskoe varmennetaan vielä oikeassa ympäristössä.
 
 ### Vaihe 0: Spotify–HEOS-playback ensin
-**Testitulos 25.10.2026:** SpotifyPlus on asennettu HACSilla. Albumin käynnistäminen toimii sekä aktiivisella Marantz NR1508 -vahvistimella että valmiustilasta. Erillistä `turn_on`-kutsua ei tarvita; vahvistimen HA-entiteetti `media_player.marantz_nr1508_2` ei tue sitä.
+**Testitulos 25.10.2026:** SpotifyPlus on asennettu HACSilla. Albumin käynnistäminen toimii testatulla HEOS-vahvistimella sekä aktiivisena että valmiustilasta. Testiympäristössä erillistä `turn_on`-kutsua ei tarvita eikä vahvistimen HA-entiteetti tue sitä. Tuki on laitekohtainen.
 
 Toimiva vähimmäiskutsu:
 
 ```yaml
 action: spotifyplus.player_media_play_context
 data:
-  entity_id: media_player.olohuone_spotifyplus
+  entity_id: media_player.your_spotifyplus_player
   context_uri: "spotify:album:0S2DmRfqWM51FUprHs0qil"
 ```
 
 Testialbumi: Sufjan Stevens – Illinois. URI:n tunniste otetaan Spotify-linkin `/album/`-osan jälkeen; `?si=...` on jakoparametri eikä albumin tunniste. Myös kokonainen albumilinkki kelpaa `context_uri`-arvoksi.
 
-Pause-toiminto on myös testattu onnistuneesti. Toimiva albumikutsu jättää `device_id`-parametrin pois ja käyttää aktiivista Spotify-laitetta (tai SpotifyPlusin oletuslaitetta, jos aktiivista ei ole). Spotify Connect -nimi on `Marantz NR1508`, mutta nimellä kohdistamista ei ole vielä varmennettu oikealla albumi-URI:lla. Aiemman epäonnistumisen yhteydessä URI oli virheellinen, joten laitteen nimeä ei voi päätellä ongelman syyksi.
+Esimerkin `media_player.your_spotifyplus_player` korvataan oman SpotifyPlus-entiteetin tunnisteella. Pause-toiminto on myös testattu onnistuneesti. Toimiva albumikutsu jättää `device_id`-parametrin pois ja käyttää aktiivista Spotify-laitetta (tai SpotifyPlusin oletuslaitetta, jos aktiivista ei ole). Spotify Connect -nimellä kohdistamista ei ole vielä varmennettu oikealla albumi-URI:lla. Aiemman epäonnistumisen yhteydessä URI oli virheellinen, joten laitteen nimeä ei voi päätellä ongelman syyksi.
 
-**Tilanne:** playbackin perusedellytys on todennettu ja muu toteutus voi alkaa. Ennen lopullista automaatiota varmennetaan vielä nimenomainen Marantz-kohdistus (myös toisen Spotify-laitteen ollessa aktiivinen), pitkän käyttötauon jälkeinen käynnistys ja palautuminen HA:n uudelleenkäynnistyksestä. Toistokerrokseksi valitaan ensisijaisesti SpotifyPlus; sovelluksen omaa playback-OAuthia ei tämän testin perusteella tarvita.
+**Tilanne:** playbackin perusedellytys on todennettu ja muu toteutus voi alkaa. Ennen lopullista automaatiota varmennetaan vielä nimenomainen vahvistinkohdistus (myös toisen Spotify-laitteen ollessa aktiivinen), pitkän käyttötauon jälkeinen käynnistys ja palautuminen HA:n uudelleenkäynnistyksestä. Toistokerrokseksi valitaan ensisijaisesti SpotifyPlus; sovelluksen omaa playback-OAuthia ei tämän testin perusteella tarvita.
 
 Alkuperäinen testilista ja täydentävät kokeet:
 

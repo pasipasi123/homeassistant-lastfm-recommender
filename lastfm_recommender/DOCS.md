@@ -3,7 +3,7 @@
 ## Install on Home Assistant OS
 
 1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` under **Settings → Apps → Install app → ⋮ → Repositories**.
-2. Install **Last.fm Recommender**. Version 0.1.0 builds locally; a prebuilt registry image is not required.
+2. Install **Last.fm Recommender**. Version 0.2.0 builds locally; a prebuilt registry image is not required.
 3. Enter the app options below, save and start the app.
 4. Select **Open Web UI** or visit `http://HA_SERVER_IP:8099/`. Enter the app's `api_token` and select **Connect**. The token is remembered only for the current browser tab's session.
 
@@ -20,6 +20,7 @@ api_token: "REPLACE_WITH_A_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS"
 timezone: "Europe/Helsinki"
 sync_interval_minutes: 360
 enrich_batch_size: 10
+enrich_interval_minutes: 5
 spotify_client_id: ""
 spotify_client_secret: ""
 ```
@@ -27,8 +28,9 @@ spotify_client_secret: ""
 - **Last.fm username and API key** are required. Get a key from [Last.fm](https://www.last.fm/api/account/create). Reading history does not require the user's password or write permissions.
 - **`api_token`**: generate a random secret of at least 32 characters with a password manager. The example is a placeholder. Use the same value in the browser and HA REST requests. Changing it requires restarting the app and updating the HA secret.
 - **`timezone`**: timezone for calendar fields in the listening history. Listening timestamps remain in UTC. Changing the timezone recalculates calendar fields at startup. This does not change the interface language, which is English. Displayed dates use English formatting and the browser's timezone.
-- **`sync_interval_minutes`**: 5–1440 minutes; default 360 (six hours). The interval starts after the previous import/enrichment cycle finishes. You can also sync manually, and import runs on app startup.
-- **`enrich_batch_size`**: 0–100 albums per cycle. Set to 0 to disable metadata enrichment. Large libraries are enriched gradually; the default of 10 limits API usage. History import and recommendations do not wait for the entire enrichment queue to finish.
+- **`sync_interval_minutes`**: 5–1440 minutes; default 360 (six hours). The interval starts after the previous history sync finishes. You can also sync manually, and import runs on app startup.
+- **`enrich_batch_size`**: 0–100 albums per enrichment batch. Set to 0 to disable metadata enrichment. Large libraries are enriched gradually; the default of 10 limits API usage. History import and recommendations do not wait for the entire enrichment queue to finish.
+- **`enrich_interval_minutes`**: 1–1440 minutes; default 5. Metadata batches run independently between six-hour history updates, and after a manual sync. Enrichment begins after the initial history sync. It does not download listening history again.
 - **Spotify Client ID and Secret** are optional: set both or leave both empty. They enable Spotify album suggestions using Client Credentials authentication. A search result does not verify availability in your market or the correct album edition; you must confirm it. Your Spotify app's API restrictions may prevent search. Manual album links work independently.
 
 Credentials stored in SpotifyPlus are not read or copied automatically. This app's Spotify credentials are not used for playback.
@@ -60,6 +62,8 @@ Automatic Spotify search suggests one result. Suggestions are always unverified 
 History and recommendations work without SpotifyPlus or Spotify API credentials. Playback through Home Assistant requires a working SpotifyPlus integration and Spotify Premium.
 
 ## Home Assistant: recommend and play an album
+
+For a dedicated **Music** sidebar dashboard with a genre cloud, album preview and separate playback button, follow the [Music dashboard guide](../homeassistant/README.md). The simpler script below is an alternative that selects and plays immediately.
 
 Add the full Authorization value to HA's `secrets.yaml`:
 
@@ -98,13 +102,15 @@ sequence:
       - stop: "No matching confirmed Spotify album. Adjust the filters or confirm album links."
   - action: spotifyplus.player_media_play_context
     data:
-      entity_id: media_player.olohuone_spotifyplus
+      entity_id: media_player.your_spotifyplus_player
       context_uri: "{{ album.spotify_uri }}"
 ```
 
-This uses the SpotifyPlus call tested in the current setup. A Marantz NR1508 started album playback from standby without a separate power-on action. The call targets the active Spotify device, or SpotifyPlus's default when no device is active. **It does not guarantee Marantz playback while another device is active.** Test `device_id: "Marantz NR1508"` separately with a valid album URI before adding it to the script.
+Replace `media_player.your_spotifyplus_player` with your actual SpotifyPlus entity ID, found under **Developer tools → States**. Use the SpotifyPlus account player entity, not the receiver's HEOS entity.
 
-Replace `media_player.olohuone_spotifyplus` with your own SpotifyPlus entity ID if different. This existing entity ID is an identifier, not interface text. No `turn_on` call is made to `media_player.marantz_nr1508_2`, which does not support that action.
+The call targets the active Spotify device, or SpotifyPlus's default when no device is active. **It does not guarantee a particular receiver while another device is active.** To target a specific receiver, test `device_id: "Your Spotify Connect device name"` separately with a valid album URI. The Connect name differs from the HA entity ID.
+
+If your device is available in Spotify Connect, a separate Home Assistant power-on action is generally unnecessary: send the SpotifyPlus playback request directly, as shown above. If the device is unavailable, check its network standby settings and whether it needs to be powered on before retrying.
 
 The API returns `album: null` when no results match, and the script stops without starting playback. Confirm album links in the interface first: the API defaults to confirmed albums only.
 
@@ -117,6 +123,7 @@ All `/api/` requests require `Authorization: Bearer TOKEN`. Tokens are not accep
 | `GET /health` | Process health without listening data; no authentication |
 | `GET /api/status` | Counts, last successful sync, checkpoint and errors |
 | `GET /api/albums?q=Illinois&limit=30` | Literal artist/album search, up to 100 results |
+| `GET /api/genres?limit=200` | Library tag counts, contextual rankings and coverage; limit 1–500 |
 | `GET /api/recommend` | Random matching album or `album: null` |
 | `POST /api/albums/ID` | Confirm with JSON: `{"spotify_uri":"spotify:album:...","tags":["indie folk"]}` |
 | `POST /api/sync` | Queue sync and enrichment; 202 accepted, 409 already running/queued |
@@ -126,6 +133,8 @@ All `/api/` requests require `Authorization: Bearer TOKEN`. Tokens are not accep
 Recommendation parameters: `min_years_unheard` (0–100, default 3), `min_total_scrobbles` (1–10000000, default 10), `genre` (optional exact tag), and `playable_only` (`true` by default; `false` includes unconfirmed albums). Omitting `tags` when confirming an album preserves its tags; an empty list removes them. Later Last.fm enrichment may add tags again.
 
 The browser includes unconfirmed recommendations by default so you can add links. The HA playback example always uses `playable_only=true`.
+
+The genre catalogue returns `genres` ordered by album count and `contextual_genres` ordered by time relevance, plus `total_genres`, `has_more`, `tagged_albums`, `total_albums` and `context`. Both lists are independently limited. Context uses the app timezone, current local hour ±2 hours, and Monday–Thursday / Friday / Weekend groups. It ranks tags with at least three contextual scrobbles by `context_scrobbles / sqrt(scrobbles_total + 20)`. Empty context falls back to library tags in the interface. All years contribute. Genre counts include unconfirmed albums and do not apply recommendation age/count filters. No family-presence inference is performed.
 
 ## Backups and recovery
 
@@ -139,6 +148,6 @@ The database belongs to one Last.fm username. Changing the username stops startu
 
 ## First-release status
 
-No LLM, voice search, custom Lovelace card, separate HACS integration or custom playback OAuth. Filters and album confirmation are available in the app's web interface; HA uses a REST command and script.
+No LLM, voice search, separate HACS integration or custom playback OAuth. Filters and album confirmation are available in the app's web interface. Version 0.2.0 also includes a custom Music dashboard card and an HA package; those files are installed separately according to the dashboard guide.
 
-Offline tests cover import resumption and replay, duplicate source events across page boundaries, transaction rollback, timezones, leap days, tag filtering, confirmed-link filtering, authentication and backup recovery. Browser testing uses synthetic history. A real 300,000-scrobble import and HA OS container installation remain to be verified during deployment. A separate SpotifyPlus playback test has already succeeded on the target hardware.
+Offline tests cover import resumption and replay, duplicate source events across page boundaries, transaction rollback, timezones, leap days, tag filtering, contextual weekday groups, confirmed-link filtering, authentication, backup recovery and independent enrichment scheduling. Browser testing uses synthetic history and simulated HA services. The user has verified HA OS installation, real-history import and recommendations in version 0.1.0; SpotifyPlus playback also works on the target hardware. The version 0.2.0 update and full dashboard installation still need target-server verification.

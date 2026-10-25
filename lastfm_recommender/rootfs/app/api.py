@@ -91,7 +91,8 @@ def make_server(address, db, worker, token, data_dir):
             path = url.path
             static = {"/": ("index.html", "text/html; charset=utf-8"),
                       "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-                      "/style.css": ("style.css", "text/css; charset=utf-8")}
+                      "/style.css": ("style.css", "text/css; charset=utf-8"),
+                      "/lastfm-music-card.js": ("lastfm-music-card.js", "text/javascript; charset=utf-8")}
             if method == "GET" and path in static:
                 name, mime = static[path]
                 body = (STATIC / name).read_bytes()
@@ -113,7 +114,9 @@ def make_server(address, db, worker, token, data_dir):
 
             if path == "/api/status" and method == "GET":
                 self.send_json(200, {**db.status(), "running": worker.running,
-                                     "pending": worker.pending, "version": "0.1.0"})
+                                     "pending": worker.pending, "phase": worker.phase, "version": "0.2.0"})
+            elif path == "/api/genres" and method == "GET":
+                self.send_json(200, db.genres(integer(param("limit", 200), "limit", 1, 500)))
             elif path == "/api/albums" and method == "GET":
                 query = param("q", "")
                 if len(query) > 200:

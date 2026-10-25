@@ -14,6 +14,8 @@ A Home Assistant OS app that imports your Last.fm listening history into a local
 
 [Installation, configuration, API and SpotifyPlus script](lastfm_recommender/DOCS.md)
 
+[Music dashboard with genre cloud and listening-time suggestions](homeassistant/README.md)
+
 ## Scope
 
 - Supports `amd64` and `aarch64`, with its own container and database at `/data/scrobbles.db`.
@@ -30,6 +32,7 @@ Requires Python 3.12+ and IANA timezone data. Install `tzdata` on Linux; on Wind
 ```sh
 python -m unittest discover -s tests -v
 node --check lastfm_recommender/rootfs/app/static/app.js
+node --check lastfm_recommender/rootfs/app/static/lastfm-music-card.js
 ```
 
 Optional browser smoke test: `node tests/ui_smoke.cjs` (requires Playwright, Microsoft Edge and a `python` command; set `PYTHON_EXE` if needed). It starts a local server with synthetic history, checks the interface and saves a screenshot to `.local-data/ui-smoke.png`. It does not call Last.fm or Spotify.

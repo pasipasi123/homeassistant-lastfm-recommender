@@ -9,7 +9,7 @@
 </head>
 <body>
 <main>
-  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.1</p>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.2</p>
     <h1>Forgotten favorites</h1><p>Your listening history, rediscovered.</p></header>
   <form id="auth" class="panel inline">
     <label>API token <input id="token" type="password" autocomplete="off" required minlength="32"
@@ -25,6 +25,12 @@
   </section>
   <section class="panel" aria-labelledby="recommend-heading">
     <h2 id="recommend-heading">Find an album</h2>
+    <p>Choose a genre first, then find a forgotten favorite.</p>
+    <label>Genre suggestions
+      <select id="genre-context"><option>Around this time</option><option>All genres</option></select>
+    </label>
+    <div id="genres" class="genre-cloud" role="group" aria-label="Choose a genre"></div>
+    <p id="genre-status"></p>
     <form id="recommend">
       <div class="filters">
         <label>Minimum years since last listen<input name="min_years_unheard" type="number" min="0" max="100" value="3" required></label>

@@ -18,3 +18,4 @@ jobs:
         with:
           node-version: "22"
       - run: node --check lastfm_recommender/rootfs/app/static/app.js
+      - run: node --check lastfm_recommender/rootfs/app/static/lastfm-music-card.js

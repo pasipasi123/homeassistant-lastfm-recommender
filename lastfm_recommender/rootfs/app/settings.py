@@ -13,6 +13,7 @@ class Settings:
     timezone: str = "Europe/Helsinki"
     sync_interval_minutes: int = 360
     enrich_batch_size: int = 10
+    enrich_interval_minutes: int = 5
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
 
@@ -30,6 +31,8 @@ class Settings:
             raise ValueError("sync_interval_minutes must be between 5 and 1440")
         if not 0 <= settings.enrich_batch_size <= 100:
             raise ValueError("enrich_batch_size must be between 0 and 100")
+        if not 1 <= settings.enrich_interval_minutes <= 1440:
+            raise ValueError("enrich_interval_minutes must be between 1 and 1440")
         if bool(settings.spotify_client_id) != bool(settings.spotify_client_secret):
             raise ValueError("Set both Spotify credentials, or leave both empty")
         return settings

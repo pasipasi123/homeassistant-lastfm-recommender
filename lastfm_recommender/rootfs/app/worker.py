@@ -16,6 +16,7 @@ class Worker:
         self.wake = threading.Event()
         self.lock = threading.Lock()
         self.running = False
+        self.phase = "idle"
         self.pending = True
 
     def request_sync(self):
@@ -63,28 +64,45 @@ class Worker:
             self.db.save_enrichment(album["id"], tags, image, candidate)
 
     def run(self):
+        next_sync, next_enrichment = 0, 0
         while not self.stop.is_set():
+            now = time.monotonic()
             with self.lock:
-                self.pending = False
-                self.running = True
+                sync_due = self.pending or now >= next_sync
+                enrichment_due = self.settings.enrich_batch_size > 0 and now >= next_enrichment
+                if sync_due:
+                    self.pending = False
+                self.running = sync_due or enrichment_due
+            if not self.running:
+                deadline = min(next_sync, next_enrichment) if self.settings.enrich_batch_size else next_sync
+                self.wake.wait(max(0, deadline - now))
+                self.wake.clear()
+                continue
             try:
-                self.sync()
-                if not self.stop.is_set():
+                if sync_due:
+                    self.phase = "sync"
+                    try:
+                        self.sync()
+                    except Exception as error:
+                        message = str(error) if isinstance(error, ServiceError) else type(error).__name__
+                        self.db.set_state("last_error", message)
+                        LOG.warning("Sync stopped: %s", message)
+                    finally:
+                        next_sync = time.monotonic() + self.settings.sync_interval_minutes * 60
+                if not self.stop.is_set() and self.settings.enrich_batch_size and (sync_due or enrichment_due):
+                    self.phase = "enrichment"
                     try:
                         self.enrich()
                     except Exception as error:
                         message = str(error) if isinstance(error, ServiceError) else type(error).__name__
                         self.db.set_state("enrichment_error", message)
                         LOG.warning("Enrichment stopped: %s", message)
-            except Exception as error:
-                message = str(error) if isinstance(error, ServiceError) else type(error).__name__
-                self.db.set_state("last_error", message)
-                LOG.warning("Sync stopped: %s", message)
+                    finally:
+                        next_enrichment = time.monotonic() + self.settings.enrich_interval_minutes * 60
             finally:
                 with self.lock:
                     self.running = False
-            self.wake.wait(self.settings.sync_interval_minutes * 60)
-            self.wake.clear()
+                    self.phase = "idle"
 
     def reset_checkpoint(self):
         with self.lock:

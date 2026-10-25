@@ -25,10 +25,40 @@ async function status() {
   const progress = data.import ? ` Import page ${data.import.page}/${data.import.total_pages || "?"}.` : "";
   $("#status").textContent = `${data.scrobbles.toLocaleString("en-GB")} scrobbles · ${data.albums} albums · ` +
     `${data.confirmed_albums} confirmed Spotify links. Last successful sync: ${date(data.last_sync_at)}. ` +
-    `${data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
+    `${data.phase === "enrichment" ? "Updating album metadata." : data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
   $("#sync").disabled = data.running || data.pending;
   if (data.last_error || data.enrichment_error) message(data.last_error || data.enrichment_error, true);
+  await loadGenres();
 }
+async function loadGenres() {
+  const data = await api("/api/genres");
+  const selected = $('#recommend input[name="genre"]').value;
+  const aroundNow = $("#genre-context").value === "Around this time";
+  const contextual = data.contextual_genres || [];
+  const genres = aroundNow && contextual.length ? contextual.slice(0, 12) : data.genres;
+  const entries = [{name: "", album_count: data.total_albums}, ...genres];
+  $("#genres").replaceChildren(...entries.map(genre => {
+    const button = element("button", `${genre.name || "All genres"} (${genre.album_count})`);
+    button.type = "button";
+    button.className = "genre-chip";
+    button.setAttribute("aria-pressed", String(genre.name === selected));
+    button.addEventListener("click", () => {
+      $('#recommend input[name="genre"]').value = genre.name;
+      $("#genres").querySelectorAll("button").forEach(chip => chip.setAttribute("aria-pressed", "false"));
+      button.setAttribute("aria-pressed", "true");
+    });
+    return button;
+  }));
+  const context = data.context;
+  const contextNote = aroundNow && contextual.length && context
+    ? `Based on your ${context.period || context.weekday} listening around ${String(context.hour).padStart(2, "0")}:00 (±2 hours, ${context.timezone}). `
+    : aroundNow ? "Not enough listening history for this time yet; showing library tags. " : "";
+  $("#genre-status").textContent = data.genres.length
+    ? contextNote + `Last.fm tags cover ${data.tagged_albums} of ${data.total_albums} albums. Counts describe your library, not the current filters.` +
+      (data.has_more ? ` Showing the top ${data.genres.length} of ${data.total_genres} tags.` : "")
+    : "No genre tags yet. Metadata enrichment adds them gradually; you can also add tags when confirming an album.";
+}
+$("#genre-context").addEventListener("change", () => loadGenres().catch(error => message(error.message, true)));
 function element(tag, text, parent) {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -97,6 +127,7 @@ $("#auth").addEventListener("submit", async (event) => {
 $("#logout").addEventListener("click", () => {
   token = ""; sessionStorage.removeItem("lastfm-token"); $("#token").value = "";
   $("#albums").replaceChildren(); $("#recommendation").replaceChildren();
+  $("#genres").replaceChildren(); $("#genre-status").textContent = "";
   $("#status").textContent = "Disconnected."; message("Token removed from this tab.");
 });
 $("#sync").addEventListener("click", async () => {
