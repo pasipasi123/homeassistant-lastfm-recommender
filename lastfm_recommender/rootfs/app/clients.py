@@ -86,11 +86,22 @@ class LastFM:
 
     def album(self, album):
         result = self.call("album.getInfo", artist=album["artist"], album=album["album"])["album"]
-        tags = result.get("tags", {}).get("tag", [])
+        if not isinstance(result, dict):
+            raise ServiceError("Last.fm returned invalid album metadata; retry on a later update")
+        # Last.fm uses empty strings or null instead of objects for some albums.
+        raw_tags = result.get("tags")
+        tags = raw_tags.get("tag", []) if isinstance(raw_tags, dict) else []
         if isinstance(tags, dict):
             tags = [tags]
-        images = [img["#text"] for img in result.get("image", []) if img.get("#text")]
-        return [tag["name"] for tag in tags], images[-1] if images else None
+        if not isinstance(tags, list):
+            tags = []
+        raw_images = result.get("image")
+        if isinstance(raw_images, dict):
+            raw_images = [raw_images]
+        images = [img["#text"] for img in (raw_images if isinstance(raw_images, list) else [])
+                  if isinstance(img, dict) and isinstance(img.get("#text"), str) and img["#text"].strip()]
+        return [tag["name"] for tag in tags if isinstance(tag, dict) and
+                isinstance(tag.get("name"), str) and tag["name"].strip()], images[-1] if images else None
 
 
 class Spotify:

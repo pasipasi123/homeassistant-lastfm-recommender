@@ -8,12 +8,17 @@ let selectedPlayer = null;
 let playerReady = false;
 let playerDraft = null;
 let playerLoading = false;
+let playerVolume = null;
+let controlBusy = false;
+let volumeConfig = {min: 0, max: 100, step: 1, decimals: 1};
 let genreData = null;
 let expandedGenres = false;
 let recommendationGeneration = 0;
+let backgroundMessage = false;
 $("#token").value = token;
 
-function message(text, error = false) {
+function message(text, error = false, background = false) {
+  backgroundMessage = background;
   $("#message").textContent = text;
   $("#message").className = error ? "error" : "";
 }
@@ -66,7 +71,10 @@ async function status() {
       (!data.enrichment_enabled ? "Album updates are disabled; set enrich_batch_size above zero in app configuration."
         : data.enrichment_pending ? "Album updates queued."
         : "Links are checked in small background batches. Use Refresh albums to see new matches.");
-  if (data.last_error || data.enrichment_error || data.spotify_error) message(data.last_error || data.enrichment_error || data.spotify_error, true);
+  const errors = [["History sync", data.last_error], ["Last.fm metadata", data.enrichment_error],
+    ["Spotify lookup", data.spotify_error]].filter(([, error]) => error);
+  if (errors.length) message(errors.map(([source, error]) => `${source}: ${error}`).join(" · "), true, true);
+  else if (backgroundMessage) message("");
   await loadGenres();
 }
 async function loadGenres() {
@@ -212,7 +220,11 @@ async function loadAlbums() {
 }
 function updatePlaybackButtons() {
   for (const button of document.querySelectorAll(".play-album")) button.disabled = !playerReady || button.dataset.confirmed !== "true";
-  for (const id of ["player-pause", "player-resume", "player-next", "player-volume"]) $(`#${id}`).disabled = !playerReady;
+  for (const id of ["player-pause", "player-resume", "player-next"]) $(`#${id}`).disabled = !playerReady || controlBusy;
+  const volumeReady = playerReady && playerVolume !== null && !controlBusy;
+  $("#player-volume").disabled = !volumeReady;
+  $("#player-volume-down").disabled = !volumeReady || playerVolume <= 0;
+  $("#player-volume-up").disabled = !volumeReady || playerVolume >= 1;
 }
 async function loadPlayers() {
   if (!playbackAvailable) {
@@ -229,14 +241,17 @@ async function loadPlayers() {
     select.value = playerDraft ?? selectedPlayer ?? "";
     const player = data.players.find(item => item.entity_id === selectedPlayer);
     playerReady = Boolean(player && player.state !== "unavailable");
+    playerVolume = Number.isFinite(player?.volume_level) && player.volume_level >= 0 && player.volume_level <= 1 ? player.volume_level : null;
+    const displayVolume = playerVolume === null ? null : volumeConfig.min + playerVolume * (volumeConfig.max - volumeConfig.min);
+    $("#volume-value").textContent = displayVolume === null ? "—" : displayVolume.toFixed(volumeConfig.decimals);
     $("#player-setup").textContent = !data.players.length
       ? "No SpotifyPlus players found. Install and configure SpotifyPlus in Home Assistant, then refresh players."
       : player ? `Saved player: ${player.name}.` : "Select and save your SpotifyPlus player to enable playback.";
     $("#player-state").textContent = player
       ? `${player.title || "No track playing"}${player.artist ? " — " + player.artist : ""} · ${player.source || player.name} · ${player.state}`
       : "Choose your SpotifyPlus player in Settings to enable playback.";
-    if (typeof player?.volume_level === "number" && document.activeElement !== $("#player-volume")) $("#player-volume").value = Math.round(player.volume_level * 100);
-  } catch (error) { playerReady = false; message(error.message, true); }
+    if (displayVolume !== null && document.activeElement !== $("#player-volume")) $("#player-volume").value = displayVolume;
+  } catch (error) { playerReady = false; playerVolume = null; $("#volume-value").textContent = "—"; message(error.message, true); }
   finally { playerLoading = false; updatePlaybackButtons(); }
 }
 $("#player-select").addEventListener("change", event => { playerDraft = event.target.value; });
@@ -251,10 +266,16 @@ $("#refresh-players").addEventListener("click", loadPlayers);
 for (const action of ["pause", "resume", "next"]) {
   $(`#player-${action}`).addEventListener("click", () => control(action));
 }
-$("#player-volume").addEventListener("change", event => control("volume", Number(event.target.value) / 100));
+$("#player-volume").addEventListener("change", event => control("volume",
+  (Number(event.target.value) - volumeConfig.min) / (volumeConfig.max - volumeConfig.min)));
+$("#player-volume-up").addEventListener("click", () => control("volume_up"));
+$("#player-volume-down").addEventListener("click", () => control("volume_down"));
 async function control(action, volume) {
+  if (controlBusy) return;
+  controlBusy = true; updatePlaybackButtons();
   try { await api("api/player/control", {method:"POST", body:JSON.stringify({action, volume})}); await loadPlayers(); }
   catch (error) { message(error.message, true); }
+  finally { controlBusy = false; updatePlaybackButtons(); }
 }
 async function connect() {
   await status();
@@ -272,7 +293,7 @@ $("#logout").addEventListener("click", () => {
   $("#status").textContent = "Disconnected."; message("Token removed from this tab.");
   $("#player-state").textContent = "Disconnected."; $("#player-setup").textContent = "Connect to choose a player.";
   $("#player-select").replaceChildren(); selectedPlayer = null; playerDraft = null;
-  playerReady = false; updatePlaybackButtons();
+  playerReady = false; playerVolume = null; $("#volume-value").textContent = "—"; updatePlaybackButtons();
 });
 $("#sync").addEventListener("click", async () => {
   try { await api("api/sync", {method:"POST", body:"{}"}); message("Sync queued."); await status(); }
@@ -314,6 +335,10 @@ async function bootstrap() {
   const response = await fetch(apiUrl("api/session"));
   if (!response.ok) throw new Error("Could not initialize the Music page.");
   const session = await response.json(); ingress = session.ingress; playbackAvailable = session.home_assistant_available;
+  volumeConfig = session.volume || volumeConfig;
+  $("#player-volume").min = volumeConfig.min; $("#player-volume").max = volumeConfig.max; $("#player-volume").step = volumeConfig.step;
+  $("#player-volume-up").setAttribute("aria-label", `Increase volume by ${volumeConfig.step.toFixed(volumeConfig.decimals)}`);
+  $("#player-volume-down").setAttribute("aria-label", `Decrease volume by ${volumeConfig.step.toFixed(volumeConfig.decimals)}`);
   $("#auth").hidden = ingress;
   if (ingress) { token = ""; sessionStorage.removeItem("lastfm-token"); $("#token").value = ""; }
   if (ingress || token) await connect();

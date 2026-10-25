@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.2.2 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.2.3 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -24,6 +24,10 @@ enrich_interval_minutes: 5
 spotify_client_id: ""
 spotify_client_secret: ""
 spotify_market: "FI"
+volume_min: 0.0
+volume_max: 100.0
+volume_step: 1.0
+volume_decimals: 1
 ```
 
 - **Last.fm username/API key**: required. Get an API key from [Last.fm](https://www.last.fm/api/account/create). History reads do not require a password, shared secret or write permissions.
@@ -34,6 +38,9 @@ spotify_market: "FI"
 - **`enrich_interval_minutes`**: 1–1440 minutes; default 5. Metadata batches run between history updates and after a manual sync. The first batch follows the initial history sync. This does not redownload history.
 - **Spotify Client ID/Secret**: optional; set both or leave both empty. They enable background catalogue matching using Client Credentials authentication. Unique exact matches are linked automatically; uncertain results need confirmation. API restrictions may prevent useful results; manually pasted album links work independently. Restart the app after changing credentials.
 - **`spotify_market`**: two-letter uppercase country code, default `FI`. Set this to your Spotify account country. Client Credentials tokens have no user country, so searches specify the market explicitly. Changing it requeues unresolved albums after a restart.
+- **`volume_min` / `volume_max`**: display bounds, default 0.0–100.0. The reported HA level 0–1 maps linearly to this range. For a device with a 0–80 scale, set 0 and 80. Negative scales are supported when that linear mapping matches your device. These settings change display units, not the receiver's physical volume limits.
+- **`volume_step`**: plus/minus step in display units, default 1.0. Use 0.5 for finer adjustment. The backend converts the step to HA's 0–1 level and reads the current level before each adjustment.
+- **`volume_decimals`**: 0–2 decimal places, default 1. The precision must be sufficient to show the configured step. Restart after changing volume settings.
 
 The optional Spotify catalogue credentials are separate from SpotifyPlus authentication. They are not used for playback. Music discovers entities belonging to the HA SpotifyPlus integration, including renamed entities, and calls that existing integration.
 
@@ -46,6 +53,8 @@ The optional Spotify catalogue credentials are separate from SpotifyPlus authent
 Choosing a genre or opening the page does not search or play automatically. Changing filters clears the previous result. A response arriving after filters changed is discarded. Playback submits an album ID and expected URI; the server checks the current confirmed URI in SQLite before making a SpotifyPlus call.
 
 **Now playing** shows the selected account's track and source and provides pause, resume, next-track and volume controls. Music uses the account's active/default Spotify Connect device. Selecting an account is not a guarantee of a particular physical receiver while another Connect device is active.
+
+By default, volume displays the SpotifyPlus level multiplied by 100 with one decimal place (for example, `0.32` becomes **32.0**), without a percent sign. The **−** and **+** buttons change the displayed level by 1.0 using freshly read player state. Adjust the display scale, precision and step with the volume options above. Controls wait for each request to finish and stay within the configured range. If the player reports no volume, the display shows **—** and volume controls are disabled until a reading is available. A slider remains available for larger changes.
 
 If your device is available in Spotify Connect, a separate HA power-on action is generally unnecessary: send the SpotifyPlus playback request directly. If unavailable, check its network standby settings and whether it needs to be powered on first. A successful request confirms that HA accepted the action, not that the receiver produced sound.
 

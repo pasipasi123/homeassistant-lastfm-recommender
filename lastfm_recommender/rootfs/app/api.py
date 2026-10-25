@@ -122,6 +122,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                 return
             if path == "/api/session" and method == "GET":
                 self.send_json(200, {"ingress": ingress,
+                                     "volume": worker.settings.volume_options,
                                      "home_assistant_available": bool(home_assistant and home_assistant.available)})
                 return
             if not self.authorized():
@@ -136,7 +137,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
 
             if path == "/api/status" and method == "GET":
                 self.send_json(200, {**db.status(), "running": worker.running,
-                                     "pending": worker.pending, "phase": worker.phase, "version": "0.2.2",
+                                     "pending": worker.pending, "phase": worker.phase, "version": "0.2.3",
                                      "spotify_configured": bool(worker.settings.spotify_client_id),
                                      "spotify_market": worker.settings.spotify_market,
                                      "enrichment_enabled": worker.settings.enrich_batch_size > 0,

@@ -52,6 +52,8 @@ class FakeHA:
             self.title = "Next track"
         elif action == "volume":
             self.volume = volume
+        elif action in ("volume_up", "volume_down"):
+            self.volume = round(max(0, min(1, self.volume + (0.01 if action == "volume_up" else -0.01))), 4)
         else:
             raise ValueError("Unsupported action")
 

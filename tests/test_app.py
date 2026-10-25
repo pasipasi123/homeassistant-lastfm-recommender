@@ -356,6 +356,28 @@ class IngressTests(DatabaseCase):
 
 
 class HomeAssistantTests(unittest.TestCase):
+    def test_volume_steps_use_fresh_reported_state_and_clamp_at_limits(self):
+        client = HomeAssistant("supervisor-secret")
+        for current, action, expected in ((0.32, "volume_up", 0.33), (0.32, "volume_down", 0.31),
+                                          (1, "volume_up", 1), (0, "volume_down", 0),
+                                          (0.995, "volume_up", 1), (0.005, "volume_down", 0)):
+            with self.subTest(current=current, action=action), \
+                 patch.object(client, "validate_player", return_value={"volume_level": current}) as validate, \
+                 patch.object(client, "_request") as request:
+                client.control(PLAYER, action, 0.9)  # Client-side volume is not the step's starting point.
+                validate.assert_called_once_with(PLAYER)
+                request.assert_called_once_with("/services/media_player/volume_set", {"entity_id": PLAYER, "volume_level": expected})
+
+    def test_volume_steps_refuse_unknown_or_invalid_current_volume(self):
+        client = HomeAssistant("supervisor-secret")
+        for current in (None, True, "0.32", float("nan"), float("inf"), -0.1, 1.1):
+            with self.subTest(current=current), \
+                 patch.object(client, "validate_player", return_value={"volume_level": current}), \
+                 patch.object(client, "_request") as request:
+                with self.assertRaises(HomeAssistantError):
+                    client.control(PLAYER, "volume_up")
+                request.assert_not_called()
+
     def test_discovery_uses_integration_membership_instead_of_entity_name(self):
         client = HomeAssistant("supervisor-secret")
         responses = [io.BytesIO(json.dumps([PLAYER, "switch.ignore", "media_player.bad/path", "media_player.disabled"]).encode()),

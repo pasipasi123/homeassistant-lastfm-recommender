@@ -38,7 +38,8 @@ def main():
     db.set_state("lastfm_username", settings.lastfm_username)
     stop = threading.Event()
     worker = Worker(db, settings, stop)
-    ha = HomeAssistant(os.environ.get("SUPERVISOR_TOKEN", ""))
+    ha = HomeAssistant(os.environ.get("SUPERVISOR_TOKEN", ""),
+                       volume_step=settings.volume_step / (settings.volume_max - settings.volume_min))
     server = make_server((args.host, args.port), db, worker, settings.api_token, data, home_assistant=ha)
     server.timeout = 0.5
     try:

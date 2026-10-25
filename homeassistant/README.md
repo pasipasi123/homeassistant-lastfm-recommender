@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.2.2** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.2.3** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -19,9 +19,11 @@ Home Assistant handles login for the Music page. Do not enter your Last.fm API k
 
 - **Discover**: choose a genre first, adjust the age/count filters, then select **Find a forgotten favorite**.
 - **Play this album**: start a confirmed album on the selected SpotifyPlus account's active/default Spotify Connect device.
-- **Now playing**: view the current track/source, pause, resume, skip or adjust volume.
+- **Now playing**: view the current track/source, pause, resume or skip. Volume is shown on a 0.0–100.0 scale (for example, **32.0**); use **− / +** for steps of 1.0 or the slider for larger changes.
 - **Album library**: find Spotify links, review uncertain editions, confirm a link and edit tags. Unique exact artist/album matches are linked automatically when catalogue credentials are configured.
 - **Settings**: choose your SpotifyPlus player, check history import progress, request a sync or download a backup.
+
+Configure the volume scale in the HA app's **Configuration** tab with `volume_min`, `volume_max`, `volume_step` and `volume_decimals`, then restart. Defaults are 0.0–100.0, step 1.0 and one decimal place. For gentler adjustment, set `volume_step: 0.5`. These are display units mapped linearly to HA's 0–1 volume level.
 
 Opening Music or choosing genres does not fetch a recommendation or start playback. Changing recommendation filters clears the previous result. Playback always requires a separate button press and a confirmed Spotify album link.
 

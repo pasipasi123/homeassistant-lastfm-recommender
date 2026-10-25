@@ -2,6 +2,8 @@
 import logging
 import threading
 import time
+import traceback
+from pathlib import Path
 
 from clients import LastFM, ServiceError, Spotify
 
@@ -65,6 +67,11 @@ class Worker:
                 message = str(error) if isinstance(error, ServiceError) else type(error).__name__
                 self.db.set_state(error_key, message)
                 LOG.warning("Album update stopped (%s): %s", error_key, message)
+                if not isinstance(error, ServiceError):
+                    # Keep values, source lines, URLs and credentials out of logs.
+                    frames = traceback.extract_tb(error.__traceback__)
+                    LOG.warning("Failure location: %s", " -> ".join(
+                        f"{Path(frame.filename).name}:{frame.lineno} ({frame.name})" for frame in frames[-3:]))
 
     def enrich_metadata(self):
         self.db.set_state("enrichment_error", None)

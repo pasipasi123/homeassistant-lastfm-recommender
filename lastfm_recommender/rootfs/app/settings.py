@@ -1,5 +1,6 @@
 """Read Supervisor options without exposing credentials in logs."""
 import json
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,15 @@ class Settings:
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
     spotify_market: str = "FI"
+    volume_min: float = 0.0
+    volume_max: float = 100.0
+    volume_step: float = 1.0
+    volume_decimals: int = 1
+
+    @property
+    def volume_options(self):
+        return {"min": self.volume_min, "max": self.volume_max,
+                "step": self.volume_step, "decimals": self.volume_decimals}
 
     @classmethod
     def read(cls, path):
@@ -39,4 +49,16 @@ class Settings:
             raise ValueError("Set both Spotify credentials, or leave both empty")
         if not re.fullmatch(r"[A-Z]{2}", settings.spotify_market):
             raise ValueError("spotify_market must be a two-letter uppercase country code")
+        values = (settings.volume_min, settings.volume_max, settings.volume_step)
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
+            raise ValueError("Volume bounds and step must be finite numbers")
+        if not -200 <= settings.volume_min < settings.volume_max <= 200:
+            raise ValueError("Volume min/max must be increasing values between -200 and 200")
+        if not 0.01 <= settings.volume_step <= settings.volume_max - settings.volume_min:
+            raise ValueError("Volume step must be at least 0.01 and no greater than the display range")
+        if (isinstance(settings.volume_decimals, bool) or not isinstance(settings.volume_decimals, int) or
+                not 0 <= settings.volume_decimals <= 2):
+            raise ValueError("volume_decimals must be 0, 1 or 2")
+        if not math.isclose(round(settings.volume_step, settings.volume_decimals), settings.volume_step):
+            raise ValueError("volume_decimals must be precise enough to display volume_step")
         return settings

@@ -9,7 +9,7 @@
 </head>
 <body>
 <main>
-  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.2.2</p>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.2.3</p>
     <h1>Music</h1><p>Your listening history, rediscovered.</p></header>
   <nav aria-label="Music pages">
     <button id="nav-music" type="button" aria-pressed="true">Discover</button>
@@ -66,7 +66,14 @@
       <button id="player-pause" type="button" class="secondary" disabled>Pause</button>
       <button id="player-resume" type="button" class="secondary" disabled>Resume</button>
       <button id="player-next" type="button" class="secondary" disabled>Next track</button>
-      <label>Volume<input id="player-volume" type="range" min="0" max="100" step="1" value="0" disabled></label>
+      <div class="volume-control" role="group" aria-label="Volume controls">
+        <label for="player-volume">Volume <output id="volume-value" for="player-volume" aria-live="polite">—</output></label>
+        <div class="volume-adjust">
+          <button id="player-volume-down" type="button" class="secondary" aria-label="Decrease volume by 1" disabled>−</button>
+          <input id="player-volume" type="range" min="0" max="100" step="1" value="0" disabled>
+          <button id="player-volume-up" type="button" class="secondary" aria-label="Increase volume by 1" disabled>+</button>
+        </div>
+      </div>
     </div>
   </section>
   <section id="library-section" class="panel" aria-labelledby="albums-heading" hidden>

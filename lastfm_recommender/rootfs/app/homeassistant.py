@@ -1,5 +1,6 @@
 """Restricted HA Core client through Supervisor; never exposes the Supervisor token."""
 import json
+import math
 import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -13,9 +14,12 @@ class HomeAssistantError(Exception):
 
 
 class HomeAssistant:
-    def __init__(self, token="", base_url="http://supervisor/core/api"):
+    def __init__(self, token="", base_url="http://supervisor/core/api", *, volume_step=0.01):
+        if isinstance(volume_step, bool) or not isinstance(volume_step, (int, float)) or not 0 < volume_step <= 1:
+            raise ValueError("Normalized volume step must be greater than 0 and at most 1")
         self._token = token
         self._base = base_url.rstrip("/")
+        self._volume_step = volume_step
 
     @property
     def available(self):
@@ -78,12 +82,18 @@ class HomeAssistant:
 
     def control(self, entity_id, action, volume=None):
         services = {"pause": "media_pause", "resume": "media_play", "next": "media_next_track",
-                    "volume": "volume_set"}
+                    "volume": "volume_set", "volume_up": "volume_set", "volume_down": "volume_set"}
         if action not in services:
             raise ValueError("Unsupported player control")
-        self.validate_player(entity_id)
+        player = self.validate_player(entity_id)
         data = {"entity_id": entity_id}
-        if action == "volume":
+        if action in ("volume_up", "volume_down"):
+            current = player.get("volume_level")
+            if (isinstance(current, bool) or not isinstance(current, (int, float)) or
+                    not math.isfinite(current) or not 0 <= current <= 1):
+                raise HomeAssistantError("Current volume is unavailable. Refresh the player before adjusting volume.")
+            volume = round(max(0, min(1, current + (self._volume_step if action == "volume_up" else -self._volume_step))), 8)
+        if action in ("volume", "volume_up", "volume_down"):
             if isinstance(volume, bool) or not isinstance(volume, (int, float)) or not 0 <= volume <= 1:
                 raise ValueError("Volume must be between 0 and 1")
             data["volume_level"] = volume

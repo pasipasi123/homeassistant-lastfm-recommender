@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.3
+
+- Display reported volume on a 0.0–100.0 scale without a percent sign and add adjustment buttons in steps of 1.0, using fresh player state and disabling duplicate requests while a control is pending.
+- Make the display range, step and decimal precision configurable in app options, with matching backend step conversion and slider scaling.
+- Refresh Music with a light palette, blue navigation, coral playback buttons and pastel genre chips.
+- Handle empty, null and missing Last.fm album tag/image containers without stopping metadata updates with AttributeError.
+- Identify the background operation in UI errors and clear its message after recovery.
+- Log the file, line and function for unexpected enrichment failures without exposing exception values or credentials.
+
 ## 0.2.2
 
 - Find Spotify album URIs in independent background batches using optional catalogue credentials and a configurable market.
