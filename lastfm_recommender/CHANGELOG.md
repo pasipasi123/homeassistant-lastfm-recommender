@@ -1,8 +1,11 @@
 # Changelog
 
-## 0.2.4
+## 0.2.4.2
 
 - Make volume controls respond immediately to rapid clicks, combine queued targets, send absolute levels sequentially and reconcile with the reported player level after updates.
+- Bump the app version so Home Assistant detects the volume fix as an available update.
+
+## 0.2.4
 - Review Spotify matches and confirm or change the recommended album's link directly in Discover, preserving the album and enabling explicit playback without switching to Album library.
 - Handle non-JSON proxy responses with a named request and HTTP status, retry transient read failures once, clear recovered refresh errors and never automatically repeat playback commands.
 - Add a quiet Last.fm source credit in the footer and album-specific catalogue links in discovery and library cards.
