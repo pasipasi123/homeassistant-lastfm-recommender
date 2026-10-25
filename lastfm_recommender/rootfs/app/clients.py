@@ -7,6 +7,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from database import normalized, spotify_uri
+
 
 class ServiceError(Exception):
     def __init__(self, message, code=None):
@@ -112,14 +114,41 @@ class Spotify:
             self.expires = time.monotonic() + int(result["expires_in"]) - 60
         if self.stop.wait(0.5):
             raise ServiceError("Request cancelled")
-        result = request_json("https://api.spotify.com/v1/search?" + urlencode({
-            "q": f'artist:{album["artist"]} album:{album["album"]}', "type": "album", "limit": 1}),
-            headers={"Authorization": "Bearer " + self.token}, stop=self.stop)
-        items = result.get("albums", {}).get("items", [])
-        if not items:
+        # Keep edition suffixes and punctuation: stripping them can match a live,
+        # remastered or deluxe release to the wrong listening-history album.
+        query = f'artist:{album["artist"]} album:{album["album"]}'
+        candidates, seen, complete = [], set(), False
+        for offset in range(0, 30, 10):
+            if offset and self.stop.wait(0.5):
+                raise ServiceError("Request cancelled")
+            result = request_json("https://api.spotify.com/v1/search?" + urlencode({
+                "q": query, "type": "album", "limit": 10, "offset": offset,
+                "market": self.settings.spotify_market}),
+                headers={"Authorization": "Bearer " + self.token}, stop=self.stop)
+            page = result.get("albums", {})
+            for item in page.get("items", []):
+                try:
+                    uri = spotify_uri(item.get("uri", ""))
+                except ValueError:
+                    continue
+                if uri in seen:
+                    continue
+                seen.add(uri)
+                artists = [a["name"] for a in item.get("artists", [])]
+                exact = (normalized(item["name"]) == normalized(album["album"]) and
+                         [normalized(a) for a in artists] == [normalized(album["artist"])])
+                candidates.append({"uri": uri, "name": item["name"], "artists": artists,
+                    "image_url": item["images"][0]["url"] if item.get("images") else None,
+                    "release_date": item.get("release_date", ""),
+                    "total_tracks": item.get("total_tracks"), "exact": exact,
+                    "restricted": bool(item.get("restrictions"))})
+            if not page.get("next"):
+                complete = True
+                break
+        if not candidates:
             return None
-        item = items[0]
-        return {"uri": item["uri"], "name": item["name"],
-                "artists": [a["name"] for a in item.get("artists", [])],
-                "image_url": item["images"][0]["url"] if item.get("images") else None,
-                "confidence": "unverified"}
+        candidates.sort(key=lambda item: not item["exact"])
+        exact = [item for item in candidates if item["exact"]]
+        automatic = complete and len(exact) == 1 and not exact[0]["restricted"]
+        return {**candidates[0], "alternatives": candidates, "complete": complete,
+                "confidence": "exact_unique" if automatic else "unverified"}

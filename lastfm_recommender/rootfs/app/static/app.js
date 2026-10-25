@@ -59,7 +59,14 @@ async function status() {
     `${data.confirmed_albums} confirmed Spotify links. Last successful sync: ${date(data.last_sync_at)}. ` +
     `${data.phase === "enrichment" ? "Updating album metadata." : data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
   $("#sync").disabled = data.running || data.pending;
-  if (data.last_error || data.enrichment_error) message(data.last_error || data.enrichment_error, true);
+  $("#enrich").disabled = !data.spotify_configured || !data.enrichment_enabled || data.running || data.pending || data.enrichment_pending;
+  $("#spotify-status").textContent = !data.spotify_configured
+    ? "Add Spotify Client ID and Secret in the app configuration to find album links automatically."
+    : `${data.confirmed_albums} linked albums (${data.automatic_albums} matched automatically) · ${data.spotify_candidates} awaiting review. Market: ${data.spotify_market}. ` +
+      (!data.enrichment_enabled ? "Album updates are disabled; set enrich_batch_size above zero in app configuration."
+        : data.enrichment_pending ? "Album updates queued."
+        : "Links are checked in small background batches. Use Refresh albums to see new matches.");
+  if (data.last_error || data.enrichment_error || data.spotify_error) message(data.last_error || data.enrichment_error || data.spotify_error, true);
   await loadGenres();
 }
 async function loadGenres() {
@@ -121,7 +128,7 @@ function albumCard(album, editable = true) {
     const cover = element("div", "♫", article); cover.className = "cover-placeholder"; cover.setAttribute("aria-hidden", "true");
   }
   const content = element("div", undefined, article);
-  element("h3", album.album, content);
+  element("h3", album.album + (album.release_year ? ` (${album.release_year})` : ""), content);
   element("p", `${album.artist} · ${album.scrobbles_total} scrobbles · last played ${date(album.last_listened_at)}`, content);
   element("p", album.tags.length ? album.tags.join(", ") : "No tags yet", content);
   const confirmed = album.spotify_status === "confirmed" && album.spotify_uri;
@@ -129,6 +136,7 @@ function albumCard(album, editable = true) {
     const link = element("a", "Open confirmed album in Spotify", content);
     link.href = "https://open.spotify.com/album/" + album.spotify_uri.split(":").pop();
     link.target = "_blank"; link.rel = "noopener noreferrer";
+    if (album.spotify_match_source === "automatic") element("p", "Automatically linked: unique exact artist and album name match. You can change the edition below.", content);
   }
   if (playbackAvailable) {
     const play = element("button", "Play this album", content);
@@ -155,7 +163,29 @@ function albumCard(album, editable = true) {
   }
   let candidate = null;
   try { candidate = JSON.parse(album.spotify_candidate); } catch { /* No candidate. */ }
-  if (candidate) element("p", `Spotify suggestion (unverified): ${candidate.artists.join(", ")} – ${candidate.name}`, content);
+  const choices = candidate?.alternatives || (candidate ? [candidate] : []);
+  if (choices.length) {
+    const details = element("details", undefined, content);
+    element("summary", `Review ${choices.length} Spotify ${choices.length === 1 ? "match" : "matches"}`, details);
+    if (!confirmed) element("p", "Choose an edition, then confirm its link below.", details);
+    if (candidate.complete === false) element("p", "More results exist. This search is incomplete, so no link was accepted automatically.", details);
+    for (const choice of choices) {
+      if (!/^spotify:album:[A-Za-z0-9]{22}$/.test(choice.uri)) continue;
+      const row = element("div", undefined, details); row.className = "spotify-option";
+      const cover = safeImage(choice.image_url);
+      if (cover) { const img = element("img", undefined, row); img.src = cover; img.alt = ""; img.loading = "lazy"; }
+      const info = element("div", undefined, row);
+      element("p", `${(choice.artists || []).join(", ")} – ${choice.name}`, info);
+      element("p", [choice.release_date, choice.total_tracks ? `${choice.total_tracks} tracks` : "", choice.exact ? "Exact name match" : "Check artist and edition"].filter(Boolean).join(" · "), info);
+      const link = element("a", "Open album in Spotify", info);
+      link.href = "https://open.spotify.com/album/" + choice.uri.split(":").pop(); link.target = "_blank"; link.rel = "noopener noreferrer";
+      const choose = element("button", "Use this edition", info); choose.type = "button"; choose.className = "secondary";
+      choose.addEventListener("click", () => { uri.value = choice.uri; uri.focus(); message("Edition selected. Confirm the album link to save it."); });
+    }
+  } else if (!confirmed) {
+    element("p", album.spotify_checked_at ? "No Spotify match found. You can paste an album link below."
+      : "Spotify lookup pending. You can also paste an album link below.", content);
+  }
   const form = element("form", undefined, content);
   const label = element("label", "Spotify album link or URI", form);
   const uri = element("input", undefined, label); uri.type = "text"; uri.required = true; uri.maxLength = 2048;
@@ -247,6 +277,13 @@ $("#logout").addEventListener("click", () => {
 $("#sync").addEventListener("click", async () => {
   try { await api("api/sync", {method:"POST", body:"{}"}); message("Sync queued."); await status(); }
   catch (error) { message(error.message, true); }
+});
+$("#enrich").addEventListener("click", async () => {
+  try { await api("api/enrich", {method:"POST", body:"{}"}); message("Album updates queued. The remaining library continues in scheduled batches."); await status(); }
+  catch (error) { message(error.message, true); }
+});
+$("#refresh-albums").addEventListener("click", async () => {
+  try { await loadAlbums(); await status(); } catch (error) { message(error.message, true); }
 });
 $("#search").addEventListener("submit", async event => {
   event.preventDefault(); try { await loadAlbums(); } catch (error) { message(error.message, true); }

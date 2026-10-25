@@ -2,6 +2,8 @@
 
 **Language requirement:** All application UI text, messages, user documentation and Home Assistant script labels must be in English. Existing entity IDs and original music metadata must not be translated.
 
+**Catalogue matching and album years (0.2.2):** Optional Spotify Client Credentials power a separate URI lookup queue with an explicit market (default FI). Unique exact artist/album matches from a complete search are linked automatically; ambiguous editions require explicit selection and confirmation. Existing confirmed links survive all background work. Four-digit Last.fm year tags move into album metadata and appear beside album names; conflicting years remain unknown. Offline matching, schema migration and browser flows are tested; live Spotify API access still needs verification on the target installation.
+
 **Current UI direction (0.2.1):** Use the app's own Music page through HA Ingress. HA handles login; users enable Show in sidebar and select their SpotifyPlus player in Music Settings. No dashboard package, custom card or separately created HA token is required. Playback uses the Supervisor Core API proxy. Direct REST access remains optional and token-protected. The version 0.2.0 manual dashboard files are superseded by this approach; the genre/context model stays the same. Target-server Ingress and Core playback verification is still required.
 
 ## 1. Yleiskatsaus & Tavoite

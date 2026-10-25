@@ -10,7 +10,7 @@ A Home Assistant OS app that imports Last.fm history into a local SQLite databas
 2. Set your Last.fm username and API key in app configuration, then start it.
 3. Enable **Show in sidebar** and open **Music**. Home Assistant handles login.
 4. In Music's **Settings**, choose and save your SpotifyPlus player.
-5. Confirm Spotify links under **Album library**, then discover and play albums.
+5. Optionally add Spotify Client ID/Secret in app configuration and set `spotify_market` to your account country (default `FI`). Restart the app. Album links are found in background batches; review uncertain matches under **Album library**. You can also paste links manually.
 
 No dashboard YAML, custom card, HA configuration package or separately created HA access token is required. The app builds locally on your HA server. Existing history and app settings survive an update.
 
@@ -20,8 +20,9 @@ No dashboard YAML, custom card, HA configuration package or separately created H
 
 - Supports `amd64` and `aarch64`, with its own container and `/data/scrobbles.db`.
 - Last.fm history and recommendations work without SpotifyPlus. Playback requires SpotifyPlus and Spotify Premium.
-- Spotify catalogue credentials are optional; album links can be confirmed manually.
-- History sync defaults to six hours; small metadata batches run every five minutes.
+- Spotify catalogue credentials are optional. Unique exact artist/album matches are linked automatically; other editions need confirmation.
+- History sync defaults to six hours; metadata and Spotify lookup batches run every five minutes.
+- Four-digit year tags are displayed beside album names instead of in the genre cloud.
 - Ingress is the default interface. An optional port 8099 API requires a separate app token.
 - English interface and user documentation. No LLM or voice search in this release.
 

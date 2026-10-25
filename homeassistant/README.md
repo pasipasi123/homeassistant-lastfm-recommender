@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.2.1** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.2.2** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -20,7 +20,7 @@ Home Assistant handles login for the Music page. Do not enter your Last.fm API k
 - **Discover**: choose a genre first, adjust the age/count filters, then select **Find a forgotten favorite**.
 - **Play this album**: start a confirmed album on the selected SpotifyPlus account's active/default Spotify Connect device.
 - **Now playing**: view the current track/source, pause, resume, skip or adjust volume.
-- **Album library**: confirm the correct Spotify album edition and edit tags.
+- **Album library**: find Spotify links, review uncertain editions, confirm a link and edit tags. Unique exact artist/album matches are linked automatically when catalogue credentials are configured.
 - **Settings**: choose your SpotifyPlus player, check history import progress, request a sync or download a backup.
 
 Opening Music or choosing genres does not fetch a recommendation or start playback. Changing recommendation filters clears the previous result. Playback always requires a separate button press and a confirmed Spotify album link.
@@ -42,6 +42,14 @@ Within the current period it uses hours within ±2 hours of the current local ho
 If there is not enough evidence, it falls back to library tags. **All genres**, **Filter genres** and **Show more genres** expose other choices. The API returns up to 500 tags per ordering. No genre is prohibited, and the time weighting does not silently restrict album recommendations to a time window.
 
 Counts describe all tagged albums, including unconfirmed ones, rather than albums eligible for the current recommendation filters. Tags overlap and can include moods or other community labels. Enrichment gradually adds tags in small batches; the history sync interval remains six hours by default.
+
+Four-digit year tags are moved to album metadata and displayed beside album names, rather than as genre buttons. Conflicting years remain unknown; decade tags such as `2000s` stay in the cloud.
+
+## Automatic Spotify links
+
+Optionally add Spotify Client ID/Secret in the app configuration, set `spotify_market` to your account country (default `FI`), and restart. The app searches unlinked albums in batches of 10 every five minutes by default, independently of Last.fm metadata. Confirmed links survive updates. No SpotifyPlus authentication changes are needed.
+
+Under **Album library**, **Find Spotify links** queues the next batch; **Refresh albums** loads new results. A unique exact artist and album match is linked automatically. Other results appear in **Review … Spotify matches** with edition details. Select **Use this edition**, then **Confirm album link and tags**. You can always paste a link manually. Searching and confirming never start playback.
 
 Custom listening periods and household-presence rules are future settings. This version does not infer whether family members are home.
 

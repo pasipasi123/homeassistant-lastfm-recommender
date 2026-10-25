@@ -1,5 +1,6 @@
 """Read Supervisor options without exposing credentials in logs."""
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -16,6 +17,7 @@ class Settings:
     enrich_interval_minutes: int = 5
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
+    spotify_market: str = "FI"
 
     @classmethod
     def read(cls, path):
@@ -35,4 +37,6 @@ class Settings:
             raise ValueError("enrich_interval_minutes must be between 1 and 1440")
         if bool(settings.spotify_client_id) != bool(settings.spotify_client_secret):
             raise ValueError("Set both Spotify credentials, or leave both empty")
+        if not re.fullmatch(r"[A-Z]{2}", settings.spotify_market):
+            raise ValueError("spotify_market must be a two-letter uppercase country code")
         return settings

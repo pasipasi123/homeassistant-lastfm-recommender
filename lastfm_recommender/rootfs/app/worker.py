@@ -18,6 +18,15 @@ class Worker:
         self.running = False
         self.phase = "idle"
         self.pending = True
+        self.enrichment_pending = False
+
+    def request_enrichment(self):
+        with self.lock:
+            if self.running or self.pending or self.enrichment_pending or not self.settings.enrich_batch_size:
+                return False
+            self.enrichment_pending = True
+            self.wake.set()
+            return True
 
     def request_sync(self):
         with self.lock:
@@ -47,6 +56,17 @@ class Worker:
                 return
 
     def enrich(self):
+        for method, error_key in ((self.enrich_metadata, "enrichment_error"),
+                                  (self.enrich_spotify, "spotify_error")):
+            self.db.set_state(error_key, None)
+            try:
+                method()
+            except Exception as error:
+                message = str(error) if isinstance(error, ServiceError) else type(error).__name__
+                self.db.set_state(error_key, message)
+                LOG.warning("Album update stopped (%s): %s", error_key, message)
+
+    def enrich_metadata(self):
         self.db.set_state("enrichment_error", None)
         for album in self.db.enrichment_queue(self.settings.enrich_batch_size):
             if self.stop.is_set():
@@ -58,10 +78,16 @@ class Worker:
                 if error.code != 6:
                     raise
                 tags, image = [], None
+            self.db.save_enrichment(album["id"], tags, image, None)
+
+    def enrich_spotify(self):
+        if not self.settings.spotify_client_id:
+            return
+        for album in self.db.spotify_queue(self.settings.enrich_batch_size, self.settings.spotify_market):
+            if self.stop.is_set():
+                return
             candidate = self.spotify.search_album(album)
-            if candidate and candidate.get("image_url"):
-                image = candidate["image_url"]
-            self.db.save_enrichment(album["id"], tags, image, candidate)
+            self.db.save_spotify_match(album["id"], candidate, self.settings.spotify_market)
 
     def run(self):
         next_sync, next_enrichment = 0, 0
@@ -69,7 +95,10 @@ class Worker:
             now = time.monotonic()
             with self.lock:
                 sync_due = self.pending or now >= next_sync
-                enrichment_due = self.settings.enrich_batch_size > 0 and now >= next_enrichment
+                enrichment_due = self.settings.enrich_batch_size > 0 and (
+                    self.enrichment_pending or now >= next_enrichment)
+                if enrichment_due:
+                    self.enrichment_pending = False
                 if sync_due:
                     self.pending = False
                 self.running = sync_due or enrichment_due

@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.2.1 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.2.2 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -23,15 +23,17 @@ enrich_batch_size: 10
 enrich_interval_minutes: 5
 spotify_client_id: ""
 spotify_client_secret: ""
+spotify_market: "FI"
 ```
 
 - **Last.fm username/API key**: required. Get an API key from [Last.fm](https://www.last.fm/api/account/create). History reads do not require a password, shared secret or write permissions.
 - **`api_token`**: optional, not used for Ingress login. Leave empty for Ingress-only use. For direct browser/REST access, generate a random secret of at least 32 characters and enable the optional port 8099 mapping in HA. Direct requests require `Authorization: Bearer TOKEN`. The listening database does not contain this token.
 - **`timezone`**: IANA timezone for local calendar fields and listening context. Listening timestamps stay in UTC. Changing it recalculates calendar fields at startup. UI text is English; dates use English formatting in the browser's timezone.
 - **`sync_interval_minutes`**: 5–1440 minutes; default 360 (six hours), measured after the previous history sync. Sync also runs on startup and can be requested manually.
-- **`enrich_batch_size`**: 0–100 albums per metadata batch; default 10. Set 0 to disable enrichment. Large libraries are enriched gradually.
+- **`enrich_batch_size`**: 0–100 albums per metadata batch and per separate Spotify lookup batch; default 10 each. Set 0 to disable both. Large libraries are enriched gradually.
 - **`enrich_interval_minutes`**: 1–1440 minutes; default 5. Metadata batches run between history updates and after a manual sync. The first batch follows the initial history sync. This does not redownload history.
-- **Spotify Client ID/Secret**: optional; set both or leave both empty. They enable catalogue search suggestions using Client Credentials authentication. Each suggestion still needs user confirmation. API restrictions or market availability may prevent a useful result; manually pasted album links work independently.
+- **Spotify Client ID/Secret**: optional; set both or leave both empty. They enable background catalogue matching using Client Credentials authentication. Unique exact matches are linked automatically; uncertain results need confirmation. API restrictions may prevent useful results; manually pasted album links work independently. Restart the app after changing credentials.
+- **`spotify_market`**: two-letter uppercase country code, default `FI`. Set this to your Spotify account country. Client Credentials tokens have no user country, so searches specify the market explicitly. Changing it requeues unresolved albums after a restart.
 
 The optional Spotify catalogue credentials are separate from SpotifyPlus authentication. They are not used for playback. Music discovers entities belonging to the HA SpotifyPlus integration, including renamed entities, and calls that existing integration.
 
@@ -61,6 +63,8 @@ At midnight, observations stay within the same period. All stored years contribu
 
 Counts describe all tagged albums, including unconfirmed ones, not albums eligible under the current discovery filters. Last.fm community tags can include moods or non-genre labels. Tags overlap, and some albums have none. Enrichment or manually added tags make the cloud more complete over time.
 
+Four-digit year tags (1000–2999) are stored separately as `release_year` and displayed beside the album name. Existing year tags are migrated on update and removed from the genre cloud. A single distinct year is used; conflicting years leave it unknown. Decade tags such as `2000s` remain tags. This year comes from Last.fm community tags and may describe a different edition; Spotify edition dates are shown separately among search results.
+
 ## History import
 
 Import starts at startup, using a fixed upper timestamp and pages of up to 200 events. A large history takes at least several minutes. Progress is visible in **Settings → Library status**. Wait for the first successful sync before evaluating total counts.
@@ -73,13 +77,21 @@ Synchronization is additive. Deleted source scrobbles and corrections to old nam
 
 A forgotten favorite meets the minimum scrobble count and last-listened age cutoff. The cutoff uses UTC calendar years, clamping February 29 to February 28 as needed. Matching albums are selected randomly and can occasionally repeat. Genre matches are exact and case-insensitive. Original names are preserved; spelling variants and editions are not merged automatically. Missing album names remain in history but do not create album recommendations.
 
-## Confirm Spotify links
+## Find and confirm Spotify links
+
+With Spotify catalogue credentials configured, a separate queue finds URIs for unlinked albums, including albums whose Last.fm metadata was already fetched. Each cycle processes up to `enrich_batch_size` albums in each queue. The default is 10 Spotify lookups every five minutes (up to 120 albums/hour while there is work). API limits, history import and network delays can slow this down. **Find Spotify links** requests the next batch when idle; scheduled batches continue the remaining library. **Refresh albums** reloads the results without replacing forms while you edit.
+
+Search examines up to 30 results in pages of 10. Automatic linking requires exactly one distinct URI with an exact artist and album name match, an unrestricted result, and a complete result set. Case, Unicode compatibility and whitespace are normalized; edition suffixes and punctuation are preserved. Multiple artists, multiple exact editions, approximate matches and searches with more results are left for review. A name match cannot prove edition identity or guarantee playback availability.
+
+The **Review … Spotify matches** section lists artwork, artist, title, release date and track count when available. Open a candidate in Spotify to inspect it, select **Use this edition**, then **Confirm album link and tags** to save it. Selecting an edition does not start playback or save it automatically. Automatically linked albums are labelled and can be corrected the same way.
+
+Successful and empty searches are cached for 30 days; failed requests remain pending. Confirmed links, including manually selected ones, are never overwritten by background searches. Spotify failures do not block Last.fm tags and Last.fm failures do not block Spotify lookups.
 
 In **Album library**, search for an artist or album. Open the correct edition in Spotify, select **⋯ → Share → Copy album link**, paste it and select **Confirm album link and tags**. Tags can be edited at the same time.
 
 A Spotify album ID follows `/album/`; `?si=...` is a sharing parameter. The app accepts the whole link or `spotify:album:ALBUM_ID`, removing sharing parameters automatically.
 
-Catalogue search suggests one unverified match. Check the artist/edition by listening before confirming. Confirmation is your decision, not an API availability check. Enrichment never overwrites a confirmed URI.
+Manual confirmation accepts the supplied album link without an API availability check.
 
 ## Optional REST API
 
@@ -101,6 +113,7 @@ Direct HTTP is unencrypted. Use a trusted local network or your own HTTPS revers
 | `POST /api/play` | Request a confirmed album with `{"album_id":1,"spotify_uri":"spotify:album:..."}` |
 | `POST /api/player/control` | `{"action":"pause"}`, `resume`, `next` or `{"action":"volume","volume":0.2}` |
 | `POST /api/sync` | Queue history sync; 202 accepted, 409 busy/queued |
+| `POST /api/enrich` | Queue next metadata/Spotify batch; 202 accepted, 409 busy/queued/disabled |
 | `POST /api/sync/reset` | Reset interrupted pagination and queue sync; preserves history |
 | `GET /api/backup` | Download a consistent SQLite backup |
 

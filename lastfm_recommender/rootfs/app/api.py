@@ -136,7 +136,11 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
 
             if path == "/api/status" and method == "GET":
                 self.send_json(200, {**db.status(), "running": worker.running,
-                                     "pending": worker.pending, "phase": worker.phase, "version": "0.2.1"})
+                                     "pending": worker.pending, "phase": worker.phase, "version": "0.2.2",
+                                     "spotify_configured": bool(worker.settings.spotify_client_id),
+                                     "spotify_market": worker.settings.spotify_market,
+                                     "enrichment_enabled": worker.settings.enrich_batch_size > 0,
+                                     "enrichment_pending": worker.enrichment_pending})
             elif path == "/api/players" and method == "GET":
                 players = home_assistant.players() if home_assistant and home_assistant.available else []
                 selected = db.get_state("spotifyplus_entity")
@@ -196,6 +200,10 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
             elif path == "/api/sync" and method == "POST":
                 self.body()
                 accepted = worker.request_sync()
+                self.send_json(202 if accepted else 409, {"accepted": accepted})
+            elif path == "/api/enrich" and method == "POST":
+                self.body()
+                accepted = worker.request_enrichment()
                 self.send_json(202 if accepted else 409, {"accepted": accepted})
             elif path == "/api/sync/reset" and method == "POST":
                 self.body()

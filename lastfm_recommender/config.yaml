@@ -1,5 +1,5 @@
 name: Last.fm Recommender
-version: "0.2.1"
+version: "0.2.2"
 slug: lastfm_recommender
 description: Rediscover forgotten albums from your Last.fm listening history
 url: https://github.com/pasipasi123/homeassistant-lastfm-recommender
@@ -26,6 +26,7 @@ options:
   enrich_interval_minutes: 5
   spotify_client_id: ""
   spotify_client_secret: ""
+  spotify_market: FI
 schema:
   lastfm_username: str
   lastfm_api_key: password
@@ -36,4 +37,5 @@ schema:
   enrich_interval_minutes: int(1,1440)
   spotify_client_id: str?
   spotify_client_secret: password?
+  spotify_market: match(^[A-Z]{2}$)?
 # No image key: Supervisor builds this first release locally from the repository.

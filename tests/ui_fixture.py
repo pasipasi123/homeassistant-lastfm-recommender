@@ -63,6 +63,14 @@ with tempfile.TemporaryDirectory() as folder:
                "track": "Chicago"} for _ in range(20)]
     db.save_page(tracks, job, 1)
     db.finish_import(job["upper"])
+    album_id = db.albums()[0]["id"]
+    choices = [{"uri": "spotify:album:0S2DmRfqWM51FUprHs0qil", "name": "Illinois",
+                "artists": ["Sufjan Stevens"], "release_date": "2005-07-04", "total_tracks": 22},
+               {"uri": "spotify:album:" + "A" * 22, "name": "Illinois (Deluxe)",
+                "artists": ["Sufjan Stevens"], "release_date": "2015", "total_tracks": 25}]
+    db.save_enrichment(album_id, ["2005"], None, None)
+    db.save_spotify_match(album_id, {**choices[0], "confidence": "unverified",
+                                    "alternatives": choices, "complete": True}, "FI")
     worker = Worker(db, Settings("demo", "not-a-real-key", TOKEN), threading.Event())
     worker.pending = False
     ha = FakeHA()

@@ -219,7 +219,7 @@ class ApiTests(DatabaseCase):
         for path, method in (("/api/status", "GET"), ("/api/albums", "GET"),
                              ("/api/genres", "GET"),
                              ("/api/recommend", "GET"), ("/api/backup", "GET"),
-                             ("/api/sync", "POST"), ("/api/albums/1", "POST"),
+                             ("/api/sync", "POST"), ("/api/enrich", "POST"), ("/api/albums/1", "POST"),
                              ("/api/sync/reset", "POST")):
             self.assertEqual(self.request(path, method, token="wrong")[0], 401)
         for path, method in (("/api/players", "GET"), ("/api/player", "POST"),
@@ -231,6 +231,15 @@ class ApiTests(DatabaseCase):
             code, body = self.request(path, token="")
             self.assertEqual(code, 200)
             self.assertGreater(len(body), 100)
+
+    def test_manual_enrichment_is_serialized_and_status_exposes_no_credentials(self):
+        self.assertEqual(self.request("/api/enrich", "POST", {})[0], 202)
+        self.assertTrue(self.worker.enrichment_pending)
+        self.assertEqual(self.request("/api/enrich", "POST", {})[0], 409)
+        data = json.loads(self.request("/api/status")[1])
+        self.assertTrue(data["enrichment_pending"])
+        self.assertFalse(data["spotify_configured"])
+        self.assertNotIn("secret", json.dumps(data))
 
     def test_spoofed_ingress_headers_do_not_bypass_direct_token(self):
         headers = {"X-Ingress-Path": "/api/hassio_ingress/fake", "X-Forwarded-For": "172.30.32.2",

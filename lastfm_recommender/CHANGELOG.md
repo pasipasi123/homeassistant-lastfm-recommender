@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2
+
+- Find Spotify album URIs in independent background batches using optional catalogue credentials and a configurable market.
+- Automatically link a unique exact artist/album name match after checking all results, up to 30; preserve edition suffixes and existing confirmed links.
+- Show ambiguous editions with artwork, release dates, track counts and explicit selection/confirmation in Album library.
+- Cache successful and empty lookups for 30 days; leave failed requests pending and keep Last.fm metadata updates independent.
+- Move four-digit Last.fm year tags into album metadata and display the year beside the album name, including existing stored tags. Conflicting years remain unknown.
+- Preserve history and links with an automatic database migration.
+
 ## 0.2.1
 
 - Open Music directly in the HA sidebar through Ingress, using HA login.

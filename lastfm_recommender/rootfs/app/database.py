@@ -15,6 +15,14 @@ def normalized(value):
     return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
 
 
+def album_tags(tags):
+    """Year tags are album metadata, not genres; conflicting years stay unknown."""
+    cleaned = {normalized(tag) for tag in tags if tag.strip()}
+    years = {int(tag) for tag in cleaned if re.fullmatch(r"[12][0-9]{3}", tag)}
+    return sorted(tag for tag in cleaned if not re.fullmatch(r"[12][0-9]{3}", tag)), (
+        next(iter(years)) if len(years) == 1 else None), bool(years)
+
+
 def calendar_cutoff(years, now=None):
     """Calendar years in UTC; February 29 clamps to February 28."""
     now = now or datetime.now(timezone.utc)
@@ -41,7 +49,7 @@ class Database:
         self.tz = ZoneInfo(tz)
         with self.connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise ValueError("Unsupported database schema version")
             conn.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -77,8 +85,18 @@ class Database:
                     track TEXT NOT NULL, count INTEGER NOT NULL,
                     PRIMARY KEY(timestamp, artist, album, track)
                 );
-                PRAGMA user_version=1;
             """)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(albums)")}
+            for name, kind in (("spotify_checked_at", "INTEGER"), ("spotify_checked_market", "TEXT"),
+                               ("spotify_match_source", "TEXT"), ("release_year", "INTEGER")):
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE albums ADD COLUMN {name} {kind}")
+            if version < 2:
+                conn.execute("""UPDATE albums SET release_year=(SELECT CAST(MIN(tag) AS INTEGER)
+                    FROM album_tags WHERE album_id=albums.id AND tag GLOB '[12][0-9][0-9][0-9]'
+                    HAVING COUNT(DISTINCT tag)=1) WHERE release_year IS NULL""")
+                conn.execute("DELETE FROM album_tags WHERE tag GLOB '[12][0-9][0-9][0-9]'")
+            conn.execute("PRAGMA user_version=2")
             previous_tz = self.get_state("timezone", conn)
             if previous_tz and previous_tz != tz:
                 # Recalculate in batches so a large history is not loaded into memory.
@@ -182,8 +200,12 @@ class Database:
                     "albums": conn.execute("SELECT COUNT(*) FROM albums").fetchone()[0],
                     "confirmed_albums": conn.execute(
                         "SELECT COUNT(*) FROM albums WHERE spotify_status='confirmed'").fetchone()[0],
+                    "automatic_albums": conn.execute(
+                        "SELECT COUNT(*) FROM albums WHERE spotify_match_source='automatic'").fetchone()[0],
+                    "spotify_candidates": conn.execute(
+                        "SELECT COUNT(*) FROM albums WHERE spotify_status='candidate'").fetchone()[0],
                     **{key: self.get_state(key, conn) for key in
-                       ("last_sync_at", "last_error", "import", "enrichment_error", "timezone")}}
+                       ("last_sync_at", "last_error", "import", "enrichment_error", "spotify_error", "timezone")}}
 
     @staticmethod
     def album_result(conn, row):
@@ -278,9 +300,12 @@ class Database:
         with self.connect() as conn:
             if not conn.execute("SELECT 1 FROM albums WHERE id=?", (album_id,)).fetchone():
                 raise LookupError("Album not found")
-            conn.execute("UPDATE albums SET spotify_uri=?, spotify_status='confirmed' WHERE id=?",
+            conn.execute("UPDATE albums SET spotify_uri=?, spotify_status='confirmed', spotify_match_source='manual' WHERE id=?",
                          (uri, album_id))
             if tags is not None:
+                tags, year, has_years = album_tags(tags)
+                if has_years:
+                    conn.execute("UPDATE albums SET release_year=? WHERE id=?", (year, album_id))
                 conn.execute("DELETE FROM album_tags WHERE album_id=?", (album_id,))
                 conn.executemany("INSERT OR IGNORE INTO album_tags VALUES (?, ?)",
                                  [(album_id, normalized(tag)) for tag in tags if tag.strip()])
@@ -293,15 +318,37 @@ class Database:
                 (int(time.time()) - 30 * 86400, limit))]
 
     def save_enrichment(self, album_id, tags, image, candidate):
+        tags, year, has_years = album_tags(tags)
         encoded_candidate = json.dumps(candidate) if candidate else None
         with self.connect() as conn:
             conn.execute("""UPDATE albums SET image_url=COALESCE(?, image_url),
-                spotify_candidate=?, enriched_at=?, spotify_status=CASE
+                release_year=CASE WHEN ? THEN ? ELSE release_year END,
+                spotify_candidate=COALESCE(?, spotify_candidate), enriched_at=?, spotify_status=CASE
                 WHEN spotify_status='confirmed' THEN 'confirmed'
-                WHEN ? IS NULL THEN 'missing' ELSE 'candidate' END WHERE id=?""",
-                (image, encoded_candidate, int(time.time()), encoded_candidate, album_id))
+                WHEN ? IS NULL THEN spotify_status ELSE 'candidate' END WHERE id=?""",
+                (image, has_years, year, encoded_candidate, int(time.time()), encoded_candidate, album_id))
             conn.executemany("INSERT OR IGNORE INTO album_tags VALUES (?, ?)",
                              [(album_id, normalized(tag)) for tag in tags if tag.strip()])
+
+    def spotify_queue(self, limit, market):
+        with self.connect() as conn:
+            return [dict(row) for row in conn.execute("""SELECT * FROM albums
+                WHERE spotify_status != 'confirmed' AND (spotify_checked_at IS NULL
+                    OR spotify_checked_at < ? OR spotify_checked_market IS NOT ?)
+                ORDER BY spotify_checked_at IS NOT NULL, scrobbles_total DESC, id LIMIT ?""",
+                (int(time.time()) - 30 * 86400, market, limit))]
+
+    def save_spotify_match(self, album_id, candidate, market):
+        automatic = bool(candidate and candidate.get("confidence") == "exact_unique")
+        uri = spotify_uri(candidate["uri"]) if automatic else None
+        with self.connect() as conn:
+            # The user may have confirmed a link while the network search ran.
+            conn.execute("""UPDATE albums SET spotify_candidate=?, spotify_checked_at=?,
+                spotify_checked_market=?, spotify_uri=?, spotify_status=?, spotify_match_source=?,
+                image_url=COALESCE(?, image_url) WHERE id=? AND spotify_status != 'confirmed'""",
+                (json.dumps(candidate) if candidate else None, int(time.time()), market, uri,
+                 "confirmed" if automatic else "candidate" if candidate else "missing",
+                 "automatic" if automatic else None, candidate.get("image_url") if candidate else None, album_id))
 
     def backup(self, destination):
         with self.connect() as source:
