@@ -4,12 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Music – Last.fm Recommender</title>
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
 <body>
 <main>
-  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.2.4.2</p>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.3.0</p>
     <h1>Music</h1><p>Your listening history, rediscovered.</p></header>
   <nav aria-label="Music pages">
     <button id="nav-music" type="button" aria-pressed="true">Discover</button>
@@ -22,6 +23,25 @@
     <button>Connect</button><button id="logout" type="button" class="secondary">Forget token</button>
   </form>
   <p id="message" role="status" aria-live="polite"></p>
+  <section id="appearance-settings" class="panel" aria-labelledby="appearance-heading" hidden>
+    <h2 id="appearance-heading">Appearance</h2>
+    <fieldset class="theme-options">
+      <legend>Color theme</legend>
+      <label class="theme-option">
+        <input type="radio" name="theme" value="light" aria-label="Light" checked>
+        <span><span class="theme-name">Light</span><span class="theme-description">Soft blue and coral</span><span class="theme-swatch light" aria-hidden="true"></span></span>
+      </label>
+      <label class="theme-option">
+        <input type="radio" name="theme" value="dark" aria-label="Dark">
+        <span><span class="theme-name">Dark</span><span class="theme-description">Midnight and periwinkle</span><span class="theme-swatch dark" aria-hidden="true"></span></span>
+      </label>
+      <label class="theme-option">
+        <input type="radio" name="theme" value="colorful" aria-label="Colorful">
+        <span><span class="theme-name">Colorful</span><span class="theme-description">Peach, mint and violet</span><span class="theme-swatch colorful" aria-hidden="true"></span></span>
+      </label>
+    </fieldset>
+    <p>Applies immediately and is remembered in this browser.</p>
+  </section>
   <section id="status-section" class="panel" aria-labelledby="status-heading" hidden>
     <h2 id="status-heading">Library status</h2>
     <p id="status">Connect to view the history import status.</p>

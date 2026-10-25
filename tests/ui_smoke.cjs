@@ -248,6 +248,67 @@ const path = require('node:path');
       input.value='-55'; input.dispatchEvent(new Event('change',{bubbles:true}));
     });
     await custom.waitForFunction(()=>document.querySelector('#volume-value').textContent==='-55.0');
+
+    // Theme choices are local, persist across reloads and work without storage access.
+    const themeContext = await browser.newContext({viewport:{width:1280,height:1000}});
+    const themed = await themeContext.newPage();
+    themed.on('pageerror',error=>errors.push(error.message));
+    await themed.goto(`http://127.0.0.1:${ports.ingress}${prefix}`);
+    await themed.locator('#genres button').first().waitFor();
+    assert.equal(await themed.locator('html').getAttribute('data-theme'),'light');
+    await themed.getByRole('button',{name:'Find a forgotten favorite',exact:true}).click();
+    await themed.locator('#recommendation h3').waitFor();
+    for (const [value,name] of [['light','Light'],['dark','Dark'],['colorful','Colorful']]) {
+      await themed.getByRole('button',{name:'Settings',exact:true}).click();
+      await themed.getByRole('radio',{name,exact:true}).check();
+      assert.equal(await themed.locator('html').getAttribute('data-theme'),value);
+      assert.equal(await themed.evaluate(()=>localStorage.getItem('lastfm-theme')||'light'),value);
+      await themed.getByRole('button',{name:'Discover',exact:true}).click();
+      assert.equal(await themed.locator('#appearance-settings').isVisible(),false);
+      const contrasts = await themed.evaluate(()=>{
+        const styles=getComputedStyle(document.documentElement);
+        const luminance=name=>{
+          const color=styles.getPropertyValue(name).trim().slice(1);
+          const rgb=[0,2,4].map(i=>parseInt(color.slice(i,i+2),16)/255)
+            .map(v=>v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4);
+          return rgb[0]*0.2126+rgb[1]*0.7152+rgb[2]*0.0722;
+        };
+        return [['--text','--panel'],['--muted','--panel'],['--accent','--panel'],
+          ['--on-accent','--accent'],['--on-coral','--coral'],['--placeholder','--input-bg'],
+          ['--chip-text','--chip-bg'],['--chip-warm-text','--chip-warm-bg'],['--chip-alt-text','--chip-alt-bg'],
+          ['--player-title','--player-bg'],['--error','--panel']].map(([foreground,background])=>{
+            const a=luminance(foreground),b=luminance(background);
+            return {foreground,ratio:(Math.max(a,b)+0.05)/(Math.min(a,b)+0.05)};
+          });
+      });
+      assert.equal(contrasts.every(pair=>pair.ratio>=4.5),true,`${name}: ${JSON.stringify(contrasts)}`);
+      await themed.screenshot({path:`.local-data/music-theme-${value}.png`,fullPage:true,animations:'disabled'});
+      await themed.setViewportSize({width:390,height:844});
+      assert.equal(await themed.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+      await themed.getByRole('button',{name:'Settings',exact:true}).click();
+      assert.equal(await themed.getByRole('radio',{name,exact:true}).isChecked(),true);
+      await themed.screenshot({path:`.local-data/music-theme-${value}-settings-mobile.png`,fullPage:true,animations:'disabled'});
+      await themed.setViewportSize({width:1280,height:1000});
+    }
+    await themed.reload();
+    assert.equal(await themed.locator('html').getAttribute('data-theme'),'colorful');
+    await themed.getByRole('button',{name:'Settings',exact:true}).click();
+    assert.equal(await themed.getByRole('radio',{name:'Colorful',exact:true}).isChecked(),true);
+    await themed.evaluate(()=>localStorage.setItem('lastfm-theme','unknown-theme'));
+    await themed.reload();
+    assert.equal(await themed.locator('html').getAttribute('data-theme'),'light');
+    const blockedContext=await browser.newContext();
+    await blockedContext.addInitScript(()=>{
+      Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Blocked','SecurityError');}});
+    });
+    const blocked=await blockedContext.newPage();
+    blocked.on('pageerror',error=>errors.push(error.message));
+    await blocked.goto(`http://127.0.0.1:${ports.ingress}${prefix}`);
+    await blocked.getByRole('button',{name:'Settings',exact:true}).click();
+    await blocked.getByRole('radio',{name:'Dark',exact:true}).check();
+    assert.equal(await blocked.locator('html').getAttribute('data-theme'),'dark');
+    await blockedContext.close();
+    await themeContext.close();
     assert.deepEqual(errors,[]);
     console.log('Browser smoke test passed: direct auth, prefixed ingress without login, player persistence, explicit playback, controls, mobile layout, backup.');
   } finally {

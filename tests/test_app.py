@@ -227,7 +227,7 @@ class ApiTests(DatabaseCase):
             self.assertEqual(self.request(path, method, token="wrong")[0], 401)
 
     def test_browser_assets_load(self):
-        for path in ("/", "/app.js", "/style.css"):
+        for path in ("/", "/app.js", "/theme.js", "/style.css"):
             code, body = self.request(path, token="")
             self.assertEqual(code, 200)
             self.assertGreater(len(body), 100)

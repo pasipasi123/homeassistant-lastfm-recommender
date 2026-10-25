@@ -20,6 +20,10 @@ let backgroundMessage = false;
 const refreshErrors = new Map();
 let metadataErrors = [];
 $("#token").value = token;
+for (const input of document.querySelectorAll('input[name="theme"]')) {
+  input.checked = input.value === document.documentElement.dataset.theme;
+  input.addEventListener("change", () => { if (input.checked) window.musicTheme.apply(input.value); });
+}
 
 function message(text, error = false, background = false) {
   backgroundMessage = background || (error && [...refreshErrors.values()].includes(text));
@@ -90,6 +94,7 @@ function showView(view) {
   $("#now-playing").hidden = view !== "music";
   $("#library-section").hidden = view !== "library";
   $("#status-section").hidden = view !== "settings";
+  $("#appearance-settings").hidden = view !== "settings";
   $("#player-settings").hidden = view !== "settings";
 }
 for (const view of ["music", "library", "settings"]) {

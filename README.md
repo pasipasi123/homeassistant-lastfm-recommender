@@ -34,6 +34,7 @@ The app also works without Spotify catalogue credentials, but each album's Spoti
 - Four-digit year tags are displayed beside album names instead of in the genre cloud.
 - Ingress is the default interface. An optional port 8099 API requires a separate app token.
 - English interface and user documentation. No LLM or voice search in this release.
+- Light, Dark and Colorful themes under **Music → Settings → Appearance**, remembered per browser.
 
 ## Development
 

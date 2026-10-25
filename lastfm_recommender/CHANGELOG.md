@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Choose Light, Dark or Colorful under Music Settings → Appearance; Light preserves the current palette.
+- Apply the palette across navigation, cards, fields, genre chips, playback controls and errors.
+- Remember the choice per browser and apply it before the page styles load; theme changes also work when local storage is unavailable.
+- Check text contrast, mobile layout and theme persistence in the browser smoke test.
+
 ## 0.2.4.2
 
 - Make volume controls respond immediately to rapid clicks, combine queued targets, send absolute levels sequentially and reconcile with the reported player level after updates.

@@ -2,6 +2,8 @@
 
 **Language requirement:** All application UI text, messages, user documentation and Home Assistant script labels must be in English. Existing entity IDs and original music metadata must not be translated.
 
+**Appearance (0.3.0):** Music Settings offers Light (the existing palette), Dark and Colorful. Theme selection stays in browser local storage, loads before styles and works for the current page if storage is blocked. All panels, controls and feedback use shared palette variables; browser verification covers contrast, mobile layout and persistence.
+
 **UI and reliability update (0.2.3):** Refresh Music with a light blue/coral palette; handle Last.fm's empty tag/image fields and identify background errors. Add numeric volume and fine adjustment buttons with configurable display min/max, decimals and step. Read the current SpotifyPlus volume before step changes, keep values in HA's 0–1 range and disable volume controls when no reading exists. Sidebar playback on the target installation has been confirmed by the user; the new settings and error recovery have offline/browser coverage.
 
 **Catalogue matching and album years (0.2.2):** Optional Spotify Client Credentials power a separate URI lookup queue with an explicit market (default FI). Unique exact artist/album matches from a complete search are linked automatically; ambiguous editions require explicit selection and confirmation. Existing confirmed links survive all background work. Four-digit Last.fm year tags move into album metadata and appear beside album names; conflicting years remain unknown. Offline matching, schema migration and browser flows are tested; live Spotify API access still needs verification on the target installation.

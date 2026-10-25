@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.2.4.2 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.0 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -45,6 +45,8 @@ volume_decimals: 1
 The optional Spotify catalogue credentials are separate from SpotifyPlus authentication. They are not used for playback. Music discovers entities belonging to the HA SpotifyPlus integration, including renamed entities, and calls that existing integration.
 
 ## Discover and play
+
+**Settings → Appearance** offers **Light**, **Dark** and **Colorful** themes. Light is the default and preserves the previous palette. Changes apply immediately and are stored in this browser's local storage, independently of app configuration and backups. The saved palette is applied before styles load to avoid a light flash when reopening a dark page. Other open tabs on the same origin follow the selection. If storage is unavailable, themes still work until the page is reloaded.
 
 1. In **Discover**, choose a genre, optionally adjust minimum years/count, then select **Find a forgotten favorite**.
 2. Preview the artist, album, scrobble count and last-listened date.

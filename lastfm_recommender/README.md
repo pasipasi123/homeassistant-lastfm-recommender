@@ -6,4 +6,6 @@ For the recommended setup, enter your Last.fm username/API key and Spotify Clien
 
 Enable **Show in sidebar**, open **Music**, then select and save your SpotifyPlus player in Music's **Settings**. Album matching runs gradually in the background; review uncertain editions under **Album library**.
 
+Choose **Light**, **Dark** or **Colorful** under **Music → Settings → Appearance**. The theme applies immediately and is remembered in this browser.
+
 See [DOCS.md](DOCS.md) for installation, options, API and SpotifyPlus playback setup.
