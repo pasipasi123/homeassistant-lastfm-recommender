@@ -5,7 +5,7 @@ Version **0.2.3** uses Home Assistant Ingress. No dashboard YAML, configuration 
 ## Update and open Music
 
 1. Update **Last.fm Recommender** under **Settings → Apps**. If needed, open **Install app → ⋮ → Check for updates** first.
-2. Start the app and enable **Show in sidebar** on its app page.
+2. In the app's **Configuration** tab, set your Last.fm username/API key. For automatic album links, **we recommend also setting Spotify Client ID/Secret** and `spotify_market` to your account country (default `FI`). Start or restart the app, then enable **Show in sidebar** on its app page.
 3. Select **Music** in the sidebar, or use **Open Web UI**.
 4. Open **Settings** inside Music, select your **SpotifyPlus player** from the list, and select **Save player**.
 
@@ -47,9 +47,11 @@ Counts describe all tagged albums, including unconfirmed ones, rather than album
 
 Four-digit year tags are moved to album metadata and displayed beside album names, rather than as genre buttons. Conflicting years remain unknown; decade tags such as `2000s` stay in the cloud.
 
-## Automatic Spotify links
+## Recommended: automatic Spotify links
 
-Optionally add Spotify Client ID/Secret in the app configuration, set `spotify_market` to your account country (default `FI`), and restart. The app searches unlinked albums in batches of 10 every five minutes by default, independently of Last.fm metadata. Confirmed links survive updates. No SpotifyPlus authentication changes are needed.
+Add Spotify Client ID/Secret in the app configuration, set `spotify_market` to your account country (default `FI`), and restart. This is recommended for everyday use: it avoids manually copying Spotify links for each album in your history. Without these credentials, links must be pasted and confirmed manually before albums can be played from Music.
+
+The app searches unlinked albums in batches of 10 every five minutes by default, independently of Last.fm metadata. Large libraries fill in gradually, and already linked albums can be played immediately. Confirmed links survive updates. The catalogue credentials are separate from SpotifyPlus authentication; no changes to your existing SpotifyPlus login are needed.
 
 Under **Album library**, **Find Spotify links** queues the next batch; **Refresh albums** loads new results. A unique exact artist and album match is linked automatically. Other results appear in **Review … Spotify matches** with edition details. Select **Use this edition**, then **Confirm album link and tags**. You can always paste a link manually. Searching and confirming never start playback.
 
