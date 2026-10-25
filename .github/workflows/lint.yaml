@@ -7,35 +7,18 @@ on:
   pull_request:
     branches:
       - main
-  schedule:
-    - cron: "0 0 * * *"
+
+permissions:
+  contents: read
 
 jobs:
-  find:
-    name: Find apps
-    runs-on: ubuntu-latest
-    outputs:
-      addons: ${{ steps.addons.outputs.addons_list }}
-    steps:
-      - name: ⤵️ Check out code from GitHub
-        uses: actions/checkout@v7.0.1
-
-      - name: 🔍 Find app directories
-        id: addons
-        uses: home-assistant/actions/helpers/find-addons@master
-
   lint:
-    name: Lint app ${{ matrix.path }}
+    name: Lint Last.fm Recommender
     runs-on: ubuntu-latest
-    needs: find
-    strategy:
-      matrix:
-        path: ${{ fromJson(needs.find.outputs.addons) }}
     steps:
-      - name: ⤵️ Check out code from GitHub
-        uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v4
 
-      - name: 🚀 Run Home Assistant App Lint
+      - name: Run Home Assistant App Lint
         uses: frenck/action-addon-linter@v2.21
         with:
-          path: "./${{ matrix.path }}"
+          path: ./lastfm_recommender

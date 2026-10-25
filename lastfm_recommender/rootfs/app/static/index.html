@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Last.fm – Forgotten Favorites</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+<main>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.1</p>
+    <h1>Forgotten favorites</h1><p>Your listening history, rediscovered.</p></header>
+  <form id="auth" class="panel inline">
+    <label>API token <input id="token" type="password" autocomplete="off" required minlength="32"
+      placeholder="Use the api_token from the app settings"></label>
+    <button>Connect</button><button id="logout" type="button" class="secondary">Forget token</button>
+  </form>
+  <p id="message" role="status" aria-live="polite"></p>
+  <section class="panel" aria-labelledby="status-heading">
+    <h2 id="status-heading">Library status</h2>
+    <p id="status">Connect to view the history import status.</p>
+    <div class="inline"><button id="sync" type="button">Sync history</button>
+      <button id="backup" type="button" class="secondary">Download backup</button></div>
+  </section>
+  <section class="panel" aria-labelledby="recommend-heading">
+    <h2 id="recommend-heading">Find an album</h2>
+    <form id="recommend">
+      <div class="filters">
+        <label>Minimum years since last listen<input name="min_years_unheard" type="number" min="0" max="100" value="3" required></label>
+        <label>Minimum scrobbles<input name="min_total_scrobbles" type="number" min="1" max="10000000" value="10" required></label>
+        <label>Genre / tag<input name="genre" placeholder="e.g. indie folk" maxlength="100"></label>
+      </div>
+      <label class="check"><input name="playable_only" type="checkbox"> Only albums with confirmed Spotify links</label>
+      <button>Find a forgotten favorite</button>
+    </form>
+    <div id="recommendation" aria-live="polite"></div>
+  </section>
+  <section class="panel" aria-labelledby="albums-heading">
+    <h2 id="albums-heading">Album library</h2>
+    <p>Confirm the Spotify link for the correct album edition. Automatic playback uses confirmed links only.</p>
+    <form id="search" class="inline"><label>Artist or album<input id="query" maxlength="200" placeholder="Search your library"></label><button>Search</button></form>
+    <div id="albums"></div>
+  </section>
+  <footer>Recommendations and history stay on your home server. Playback is handled by a SpotifyPlus script in Home Assistant.</footer>
+</main>
+</body>
+</html>

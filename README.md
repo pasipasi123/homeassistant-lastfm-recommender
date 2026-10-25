@@ -1,42 +1,43 @@
-# Example Home Assistant app repository
+# Last.fm Recommender
 
-This repository can be used as a "blueprint" for app development to help you get started.
+A Home Assistant OS app that imports your Last.fm listening history into a local SQLite database and helps you rediscover forgotten albums. Use the web interface to filter recommendations and confirm Spotify album links, then start playback through a Home Assistant script using SpotifyPlus.
 
-Apps documentation: <https://contributors.home-assistant.io/apps/>
+## Installation
 
-[![Open your Home Assistant instance and show the app store with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/?repository_url=https%3A%2F%2Fgithub.com%2Fhome-assistant%2Fapps-example)
+[![Add this app repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/?repository_url=https%3A%2F%2Fgithub.com%2Fpasipasi123%2Fhomeassistant-lastfm-recommender)
 
-## Apps
+1. Add this repository to the Home Assistant app store. The source must be pushed to GitHub first.
+2. Install **Last.fm Recommender**. This release builds from source on your HA server.
+3. Set your Last.fm username, API key and a random `api_token` of at least 32 characters.
+4. Start the app and open its web interface. Enter the same token. The initial import starts automatically.
+5. Confirm Spotify links for a few albums and configure the HA playback script.
 
-This repository contains the following apps
+[Installation, configuration, API and SpotifyPlus script](lastfm_recommender/DOCS.md)
 
-### [Example app](./example)
+## Scope
 
-![Supports aarch64 Architecture][aarch64-shield]
-![Supports amd64 Architecture][amd64-shield]
+- Supports `amd64` and `aarch64`, with its own container and database at `/data/scrobbles.db`.
+- History and recommendations work without SpotifyPlus. Automatic playback requires the HA SpotifyPlus integration and Spotify Premium.
+- Spotify search is optional. Without Spotify API credentials, paste album links from Spotify manually.
+- No LLM, voice search or custom HACS integration in this release.
+- Local HTTP web interface on port 8099, without ingress. Use a trusted local network or your own HTTPS reverse proxy.
+- All application text and documentation are in English.
 
-_Example app to use as a blueprint for new apps._
+## Development
 
-<!--
+Requires Python 3.12+ and IANA timezone data. Install `tzdata` on Linux; on Windows, use `python -m pip install tzdata` if needed. There are no other Python dependencies.
 
-Notes to developers after forking or using the github template feature:
-- While developing comment out the 'image' key from 'example/config.yaml' to make the supervisor build the app locally.
-  - Remember to put this back when pushing up your changes.
-- When you merge to the 'main' branch of your repository a new build will be triggered.
-  - Make sure you adjust the 'version' key in 'example/config.yaml' when you do that.
-  - Make sure you update 'example/CHANGELOG.md' when you do that.
-  - The first time this runs you might need to adjust the image configuration on github container registry to make it public.
-  - You may also need to adjust the GitHub Actions configuration (Settings > Actions > General > Workflow > Read & Write).
-- Update the repository check in '.github/workflows/build-app.yaml' to match your repository name
-  (the 'github.repository' condition in the 'prepare' job).
-- Adjust the 'image' key in 'example/config.yaml' so it points to your username instead of 'home-assistant'
-  (e.g., 'ghcr.io/my-username/my-app').
-- Rename the example directory.
-  - The 'slug' key in 'example/config.yaml' should match the directory name.
-- Adjust all keys/urls that point to 'home-assistant' to now point to your user/fork.
-- Share your repository on the forums https://community.home-assistant.io/c/projects/9
-- Do awesome stuff!
- -->
+```sh
+python -m unittest discover -s tests -v
+node --check lastfm_recommender/rootfs/app/static/app.js
+```
 
-[aarch64-shield]: https://img.shields.io/badge/aarch64-yes-green.svg
-[amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
+Optional browser smoke test: `node tests/ui_smoke.cjs` (requires Playwright, Microsoft Edge and a `python` command; set `PYTHON_EXE` if needed). It starts a local server with synthetic history, checks the interface and saves a screenshot to `.local-data/ui-smoke.png`. It does not call Last.fm or Spotify.
+
+For a local run, create `.local-data/options.json` using the documented options, then run:
+
+```sh
+python lastfm_recommender/rootfs/app/run.py --options .local-data/options.json --data .local-data --host 127.0.0.1
+```
+
+`.local-data/` and credential-containing `options.json` files are excluded from Git. CI runs offline tests, JavaScript syntax checking, HA app lint and container builds for both architectures. Builds do not automatically publish an image or deploy the app.

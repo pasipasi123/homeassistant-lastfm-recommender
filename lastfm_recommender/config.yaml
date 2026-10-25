@@ -1,0 +1,35 @@
+name: Last.fm Recommender
+version: "0.1.0"
+slug: lastfm_recommender
+description: Rediscover forgotten albums from your Last.fm listening history
+url: https://github.com/pasipasi123/homeassistant-lastfm-recommender
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: Web interface and authenticated REST API (local network only)
+webui: http://[HOST]:[PORT:8099]/
+options:
+  lastfm_username: ""
+  lastfm_api_key: ""
+  api_token: ""
+  timezone: Europe/Helsinki
+  sync_interval_minutes: 360
+  enrich_batch_size: 10
+  spotify_client_id: ""
+  spotify_client_secret: ""
+schema:
+  lastfm_username: str
+  lastfm_api_key: password
+  api_token: password
+  timezone: str
+  sync_interval_minutes: int(5,1440)
+  enrich_batch_size: int(0,100)
+  spotify_client_id: str?
+  spotify_client_secret: password?
+# No image key: Supervisor builds this first release locally from the repository.

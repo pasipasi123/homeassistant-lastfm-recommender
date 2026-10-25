@@ -1,4 +1,4 @@
 # https://contributors.home-assistant.io/apps/guides/repository/#create-the-repository
-name: Example Home Assistant app repository
-url: 'https://github.com/home-assistant/apps-example'
-maintainer: Awesome Maintainer <awesome@example.com>
+name: Last.fm Recommender Apps
+url: 'https://github.com/pasipasi123/homeassistant-lastfm-recommender'
+maintainer: pasipasi123

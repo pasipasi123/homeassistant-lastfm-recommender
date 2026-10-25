@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+.local-data/
+options.json
+*.db
+*.db-shm
+*.db-wal
