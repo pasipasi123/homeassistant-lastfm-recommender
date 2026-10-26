@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.1.2 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.1.3 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -55,7 +55,9 @@ The optional Spotify catalogue credentials are separate from SpotifyPlus authent
 
 Choosing a genre or opening the page does not search or play automatically. Changing filters clears the previous result. A response arriving after filters changed is discarded. Playback submits an album ID and expected URI; the server checks the current confirmed URI in SQLite before making a SpotifyPlus call.
 
-**Now playing** shows the selected account's track and source and provides pause, resume, next-track and volume controls. Music uses the account's active/default Spotify Connect device. Selecting an account is not a guarantee of a particular physical receiver while another Connect device is active.
+In **Discover**, choose a **Spotify Connect device** and select **Use device**. This saves the destination in the app database without starting or transferring playback. **Refresh devices** rereads SpotifyPlus's HA source list; if a device is missing, check its availability in SpotifyPlus first. Album playback always supplies the saved device name to SpotifyPlus, even if another device was last active. If the saved device is unavailable, choose another device or refresh; the app does not fall back to the active device. Changing SpotifyPlus accounts clears the device selection.
+
+**Now playing** shows the selected account's current track and source. Pause, resume, next-track and volume controls target the saved Connect device and are enabled only when HA reports that device as the account's current source. If Spotify is active elsewhere, play an album on the saved device first. The app never uses another device's reported volume as the starting point for adjustments.
 
 By default, volume displays the SpotifyPlus level multiplied by 100 with one decimal place (for example, `0.32` becomes **32.0**), without a percent sign. The **−** and **+** buttons update the displayed target immediately, by 1.0 per click. Rapid clicks accumulate locally while absolute volume commands are sent one at a time; intermediate queued targets are combined into the latest target. Adjust the display scale, precision and step with the volume options above. Values stay within the configured range, and older player reports do not overwrite a pending target. After the final command, the app briefly polls for the reported value and reconciles the display within about five seconds. Failed commands are not retried and queued changes are dropped. If the player reports no volume, the display shows **—** and volume controls are disabled until a reading is available. A slider remains available for larger changes.
 
@@ -124,8 +126,9 @@ Direct HTTP is unencrypted. Use a trusted local network or your own HTTPS revers
 | `GET /api/albums?q=Illinois&limit=30` | Literal artist/album search; limit 1–100 |
 | `GET /api/recommend` | Random matching album or `album: null` |
 | `POST /api/albums/ID` | Confirm with `{"spotify_uri":"spotify:album:...","tags":["indie folk"]}` |
-| `GET /api/players` | SpotifyPlus players and saved selection |
+| `GET /api/players` | SpotifyPlus players with `devices` source lists, `selected_entity` and `selected_device` |
 | `POST /api/player` | Save selection with `{"entity_id":"media_player.your_spotifyplus_player"}` |
+| `POST /api/player/device` | Save destination with `{"device_id":"Living room speaker","expected_entity":"media_player.your_spotifyplus_player"}`; does not start playback |
 | `POST /api/play` | Request a confirmed album with `{"album_id":1,"spotify_uri":"spotify:album:..."}` |
 | `POST /api/player/control` | `{"action":"pause"}`, `resume`, `next` or `{"action":"volume","volume":0.2}` |
 | `POST /api/sync` | Queue history sync; 202 accepted, 409 busy/queued |

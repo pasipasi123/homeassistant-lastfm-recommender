@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.3.1.2** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.3.1.3** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -8,6 +8,7 @@ Version **0.3.1.2** uses Home Assistant Ingress. No dashboard YAML, configuratio
 2. In the app's **Configuration** tab, set your Last.fm username/API key. For automatic album links, **we recommend also setting Spotify Client ID/Secret** and `spotify_market` to your account country (default `FI`). Start or restart the app, then enable **Show in sidebar** on its app page.
 3. Select **Music** in the sidebar, or use **Open Web UI**.
 4. Open **Settings** inside Music, select your **SpotifyPlus player** from the list, and select **Save player**.
+5. In **Discover**, choose your **Spotify Connect device** and select **Use device**. This saves the destination without starting playback.
 
 The player list comes from your installed SpotifyPlus integration, including entities you have renamed. The saved selection belongs to your installation and is stored in the app's database. Example documentation contains no personal entity IDs.
 
@@ -18,7 +19,7 @@ Home Assistant handles login for the Music page. Do not enter your Last.fm API k
 ## Daily use
 
 - **Discover**: choose a genre first, adjust the age/count filters, then select **Find a forgotten favorite**. Review Spotify matches and confirm the album link on the same card; there is no need to switch to Album library. **Check or change Spotify link** also lets you correct an already linked edition.
-- **Play this album**: start a confirmed album on the selected SpotifyPlus account's active/default Spotify Connect device.
+- **Play this album**: start a confirmed album on the saved Spotify Connect device, even if Spotify was last used on another device.
 - **Now playing**: view the current track/source, pause, resume or skip. Volume is shown on a 0.0–100.0 scale (for example, **32.0**); use **− / +** for steps of 1.0 or the slider for larger changes.
 - **Album library**: find Spotify links, review uncertain editions, confirm a link and edit tags. Unique exact artist/album matches are linked automatically when catalogue credentials are configured.
 - **Settings**: choose a color theme and your SpotifyPlus player, check history import progress, request a sync or download a backup.
@@ -31,7 +32,7 @@ Opening Music or choosing genres does not fetch a recommendation or start playba
 
 If your device is available in Spotify Connect, a separate Home Assistant power-on action is generally unnecessary: the app sends the SpotifyPlus playback request directly. If unavailable, check the device's network standby settings and whether it needs to be powered on before retrying.
 
-The selected SpotifyPlus entity represents a Spotify account, not a guaranteed physical receiver. Playback uses that account's active/default Connect device. Make the intended receiver active in Spotify or configure the account's default in SpotifyPlus when you use multiple devices.
+The selected SpotifyPlus entity represents a Spotify account. Choose the physical destination separately in Discover. The list comes from SpotifyPlus's HA source list; **Refresh devices** rereads it without a Spotify catalogue search. If the saved device is unavailable, playback is blocked rather than sent elsewhere. Now playing shows the account's current source, and playback controls are disabled while it differs from the saved destination. Changing accounts clears the destination.
 
 ## Genre suggestions
 
@@ -67,7 +68,7 @@ Custom listening periods and household-presence rules are future settings. This 
 - **No matching confirmed albums**: confirm more album links under **Album library**, loosen the filters or include unconfirmed albums to browse suggestions.
 - **No genre tags yet**: wait for metadata enrichment, or add tags when confirming an album. A history import alone does not contain album genre tags.
 - **Music is not in the sidebar**: enable **Show in sidebar** on the app page. The panel is administrator-only by default.
-- **No track change after playback**: check the selected account's active/default Connect device and HA's SpotifyPlus logs. The app reports that playback was requested; it cannot guarantee the device produced sound.
+- **No track change after playback**: check the saved Connect device in Discover and HA's SpotifyPlus logs. Refresh devices if necessary. The app reports that playback was requested; it cannot guarantee the device produced sound.
 
 ## Optional direct access
 

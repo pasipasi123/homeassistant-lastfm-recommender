@@ -102,6 +102,35 @@ const path = require('node:path');
     await music.locator('#player-select option[value="media_player.demo_music"]').waitFor({state:'attached'});
     await music.getByRole('combobox',{name:'SpotifyPlus player',exact:true}).selectOption('media_player.demo_music');
     await music.getByRole('button',{name:'Save player',exact:true}).click();
+    await music.getByRole('button',{name:'Discover',exact:true}).click();
+    await music.getByLabel('Spotify Connect device',{exact:true}).selectOption('Demo receiver');
+    await music.getByRole('button',{name:'Use device',exact:true}).click();
+    await music.waitForFunction(()=>document.querySelector('#device-status').textContent.includes('Albums will play on Demo receiver'));
+    await music.reload();
+    await music.waitForFunction(()=>document.querySelector('#device-select').value === 'Demo receiver');
+    assert.equal(requests.filter(request=>request.path.endsWith('/api/play')).length,0);
+    // Another active device must not supply this receiver's volume or receive its controls.
+    let deviceScenario='other-active';
+    await music.route('**/api/players',async route=>{
+      const response=await route.fetch();
+      const data=await response.json();
+      data.players=data.players.map(player=>({...player,source:'Work laptop',volume_level:0.9,
+        devices:deviceScenario==='missing' ? ['Work laptop'] : player.devices}));
+      await route.fulfill({response,json:data});
+    });
+    await music.getByRole('button',{name:'Refresh devices',exact:true}).click();
+    await music.waitForFunction(()=>document.querySelector('#device-status').textContent.includes('currently active on Work laptop'));
+    assert.equal(await music.getByRole('button',{name:'Pause',exact:true}).isEnabled(),false);
+    assert.equal(await music.locator('#player-volume-up').isEnabled(),false);
+    assert.equal(await music.locator('#volume-value').innerText(),'—');
+    deviceScenario='missing';
+    await music.getByRole('button',{name:'Refresh devices',exact:true}).click();
+    await music.waitForFunction(()=>document.querySelector('#device-status').textContent.includes('Demo receiver is unavailable'));
+    assert.equal(await music.locator('#device-select').inputValue(),'Demo receiver');
+    await music.unroute('**/api/players');
+    await music.getByRole('button',{name:'Refresh devices',exact:true}).click();
+    await music.waitForFunction(()=>!document.querySelector('#player-volume-up').disabled);
+    await music.getByRole('button',{name:'Settings',exact:true}).click();
     await music.waitForFunction(()=>document.querySelector('#player-setup').textContent.includes('Saved player:'));
     let quotaDeadline=Math.floor(Date.now()/1000)+7*3600;
     await music.route('**/api/status',async route=>{

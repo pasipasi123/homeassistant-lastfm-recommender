@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1.3
+
+- Choose and save a Spotify Connect device directly in Discover. Album playback explicitly targets that device, even when Spotify was last used elsewhere.
+- Read the device list from SpotifyPlus in Home Assistant without additional Spotify search requests. Unavailable devices never fall back to another player.
+- Target playback controls to the saved device and disable them while another device is active, avoiding volume adjustments based on another device's reported level.
+
 ## 0.3.1.2
 
 - Show Spotify quota pauses as quiet, readable status notes in Album library and Settings instead of a persistent red Discover banner.

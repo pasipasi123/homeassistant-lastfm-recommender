@@ -10,7 +10,7 @@ A Home Assistant OS app that imports Last.fm history into a local SQLite databas
 2. Set your **Last.fm username** and **Last.fm API key** in the app's **Configuration** tab. The Last.fm shared secret is not needed.
 3. **Recommended for everyday use:** add your Spotify application's **Client ID** and **Client Secret** as `spotify_client_id` and `spotify_client_secret`. Set `spotify_market` to your Spotify account country (default `FI`). These enable automatic album-link discovery, so you can play recommendations without copying each album's link by hand.
 4. Start the app, enable **Show in sidebar**, and open **Music**. Home Assistant handles login. Restart if you change configuration later.
-5. In Music's **Settings**, choose and save your SpotifyPlus player.
+5. In Music's **Settings**, choose and save your SpotifyPlus player. In **Discover**, choose the **Spotify Connect device** to use and select **Use device**. Album playback explicitly targets this saved destination.
 6. Let the background import and album lookups run. Under **Album library**, use **Refresh albums** to see new links and review uncertain matches. Then use **Discover** to find and play an album.
 
 No dashboard YAML, custom card, HA configuration package or separately created HA access token is required. The app builds locally on your HA server. Existing history and app settings survive an update.

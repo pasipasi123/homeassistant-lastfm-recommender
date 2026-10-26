@@ -258,8 +258,10 @@ class ApiTests(DatabaseCase):
         self.assertEqual(self.request("/api/play", "POST", payload)[0], 503)
         self.assertEqual(self.request("/api/player", "POST", {"entity_id": PLAYER})[0], 200)
         self.assertEqual(self.db.get_state("spotifyplus_entity"), PLAYER)
+        self.assertEqual(self.request("/api/play", "POST", payload)[0], 503)
+        self.assertEqual(self.request("/api/player/device", "POST", {"device_id": "Living room", "expected_entity": PLAYER})[0], 200)
         self.assertEqual(self.request("/api/play", "POST", payload)[0], 200)
-        self.ha.play.assert_called_once_with(PLAYER, URI)
+        self.ha.play.assert_called_once_with(PLAYER, URI, device_id="Living room")
         self.assertEqual(self.request("/api/play", "POST", {**payload, "spotify_uri": "spotify:album:AAAAAAAAAAAAAAAAAAAAAA"})[0], 409)
         self.assertEqual(self.ha.play.call_count, 1)
         self.assertEqual(self.request("/api/player", "POST", {"entity_id": "light.not_a_player"})[0], 503)
@@ -269,6 +271,33 @@ class ApiTests(DatabaseCase):
         self.assertEqual(self.request("/api/sync", "POST", {}, headers={"Content-Type": "text/plain"})[0], 400)
         self.assertEqual(self.request("/api/player/control", "POST", {"action": "pause"})[0], 503)
         self.ha.control.assert_not_called()
+
+    def test_device_selection_validates_account_and_list_and_clears_on_account_change(self):
+        self.db.set_state("spotifyplus_entity", PLAYER)
+        self.ha.validate_player.side_effect = lambda entity: {"devices": ["Living room"]}
+        self.ha.validate_device.side_effect = HomeAssistant("token").validate_device
+        payload = {"device_id": "Living room", "expected_entity": "media_player.old_account"}
+        self.assertEqual(self.request("/api/player/device", "POST", payload)[0], 409)
+        payload["expected_entity"] = PLAYER
+        self.assertEqual(self.request("/api/player/device", "POST", {**payload, "device_id": "Missing"})[0], 503)
+        self.assertEqual(self.request("/api/player/device", "POST", payload)[0], 200)
+        self.assertEqual(self.db.get_state("spotify_connect_device"), "Living room")
+        self.ha.play.assert_not_called()
+        self.ha.control.assert_not_called()
+        self.assertEqual(self.request("/api/player", "POST", {"entity_id": PLAYER})[0], 200)
+        self.assertEqual(self.db.get_state("spotify_connect_device"), "Living room")
+        self.assertEqual(self.request("/api/player", "POST", {"entity_id": "media_player.other"})[0], 200)
+        self.assertFalse(self.db.get_state("spotify_connect_device"))
+
+    def test_stale_device_controls_are_rejected(self):
+        self.db.set_state("spotifyplus_entity", PLAYER)
+        self.db.set_state("spotify_connect_device", "Living room")
+        payload = {"action": "volume", "volume": 0.32, "expected_device": "Work laptop"}
+        self.assertEqual(self.request("/api/player/control", "POST", payload)[0], 409)
+        self.ha.control.assert_not_called()
+        payload["expected_device"] = "Living room"
+        self.assertEqual(self.request("/api/player/control", "POST", payload)[0], 200)
+        self.ha.control.assert_called_once_with(PLAYER, "volume", 0.32, device_id="Living room")
 
     def test_volume_target_rejects_a_changed_selected_player(self):
         self.db.set_state("spotifyplus_entity", PLAYER)
@@ -402,10 +431,31 @@ class HomeAssistantTests(unittest.TestCase):
 
     def test_only_fixed_spotifyplus_playback_service_is_called(self):
         client = HomeAssistant("supervisor-secret")
-        with patch.object(client, "validate_player"), patch.object(client, "_request") as request:
-            client.play(PLAYER, URI)
+        with patch.object(client, "validate_player", return_value={"devices": ["Living room"]}), patch.object(client, "_request") as request:
+            client.play(PLAYER, URI, device_id="Living room")
         request.assert_called_once_with("/services/spotifyplus/player_media_play_context",
-                                        {"entity_id": PLAYER, "context_uri": URI})
+                                        {"entity_id": PLAYER, "context_uri": URI, "device_id": "Living room"})
+
+    def test_album_play_never_falls_back_to_active_laptop(self):
+        client = HomeAssistant("secret")
+        with patch.object(client, "validate_player", return_value={"devices": ["Work laptop"], "source": "Work laptop"}), \
+             patch.object(client, "_request") as request:
+            for device in (None, "*", "Living room"):
+                with self.subTest(device=device), self.assertRaises(HomeAssistantError):
+                    client.play(PLAYER, URI, device_id=device)
+            request.assert_not_called()
+
+    def test_controls_target_saved_device_and_do_not_use_other_devices_volume(self):
+        client = HomeAssistant("secret")
+        player = {"devices": ["Living room", "Work laptop"], "source": "Work laptop", "volume_level": 0.9}
+        with patch.object(client, "validate_player", return_value=player), patch.object(client, "_request") as request:
+            with self.assertRaises(HomeAssistantError):
+                client.control(PLAYER, "volume_up", device_id="Living room")
+            request.assert_not_called()
+            player.update(source="Living room", volume_level=0.32)
+            client.control(PLAYER, "volume_up", device_id="Living room")
+            request.assert_called_once_with("/services/spotifyplus/player_set_volume_level",
+                                            {"entity_id": PLAYER, "device_id": "Living room", "volume_level": 33})
 
     def test_timeout_is_not_retried_and_secrets_are_not_reported(self):
         client = HomeAssistant("supervisor-secret")

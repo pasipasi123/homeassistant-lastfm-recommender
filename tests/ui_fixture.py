@@ -30,19 +30,26 @@ class FakeHA:
     def players(self):
         return [{"entity_id": PLAYER, "name": "Demo SpotifyPlus", "state": self.state,
                  "title": self.title, "artist": "Sufjan Stevens" if self.title else None,
-                 "source": "Demo receiver", "volume_level": self.volume}]
+                 "source": "Demo receiver", "volume_level": self.volume,
+                 "devices": ["Demo receiver", "Work laptop"]}]
 
     def validate_player(self, entity_id):
         if entity_id != PLAYER:
             raise HomeAssistantError("Select a SpotifyPlus player")
+        return self.players()[0]
 
-    def play(self, entity_id, uri):
+    def validate_device(self, player, device_id):
+        if device_id not in player["devices"]:
+            raise HomeAssistantError("Select an available Spotify Connect device")
+
+    def play(self, entity_id, uri, device_id=None):
         self.validate_player(entity_id)
+        self.validate_device(self.players()[0], device_id)
         if uri != "spotify:album:0S2DmRfqWM51FUprHs0qil":
             raise ValueError("Unexpected URI")
         self.state, self.title = "playing", "Chicago"
 
-    def control(self, entity_id, action, volume=None):
+    def control(self, entity_id, action, volume=None, device_id=None):
         self.validate_player(entity_id)
         if action == "pause":
             self.state = "paused"

@@ -138,7 +138,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
 
             if path == "/api/status" and method == "GET":
                 self.send_json(200, {**db.status(), "running": worker.running,
-                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.1.2",
+                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.1.3",
                                      "spotify_configured": bool(worker.settings.spotify_client_id),
                                      "spotify_market": worker.settings.spotify_market,
                                      "enrichment_enabled": worker.settings.enrich_batch_size > 0,
@@ -146,7 +146,8 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
             elif path == "/api/players" and method == "GET":
                 players = home_assistant.players() if home_assistant and home_assistant.available else []
                 selected = db.get_state("spotifyplus_entity")
-                self.send_json(200, {"players": players, "selected_entity": selected})
+                self.send_json(200, {"players": players, "selected_entity": selected,
+                                     "selected_device": db.get_state("spotify_connect_device")})
             elif path == "/api/player" and method == "POST":
                 body = self.body()
                 if not home_assistant:
@@ -155,7 +156,22 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                 if not isinstance(entity_id, str):
                     raise ValueError("Expected entity ID")
                 home_assistant.validate_player(entity_id)
+                if db.get_state("spotifyplus_entity") != entity_id:
+                    db.set_state("spotify_connect_device", "")
                 db.set_state("spotifyplus_entity", entity_id)
+                self.send_json(200, {"saved": True})
+            elif path == "/api/player/device" and method == "POST":
+                body = self.body()
+                if not home_assistant:
+                    raise HomeAssistantError("Home Assistant playback is unavailable")
+                entity_id = self.selected_player()
+                if body.get("expected_entity") != entity_id:
+                    self.send_json(409, {"error": "The selected account changed. Refresh devices before choosing a device."})
+                    return
+                device_id = body.get("device_id")
+                player = home_assistant.validate_player(entity_id)
+                home_assistant.validate_device(player, device_id)
+                db.set_state("spotify_connect_device", device_id)
                 self.send_json(200, {"saved": True})
             elif path == "/api/play" and method == "POST":
                 body = self.body()
@@ -170,7 +186,13 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                 if body.get("spotify_uri") != album["spotify_uri"]:
                     self.send_json(409, {"error": "The album link changed. Refresh the recommendation before playback"})
                     return
-                home_assistant.play(self.selected_player(), album["spotify_uri"])
+                device_id = db.get_state("spotify_connect_device")
+                if not device_id:
+                    raise HomeAssistantError("Choose a Spotify Connect device in Discover before playing an album.")
+                if body.get("expected_device", device_id) != device_id:
+                    self.send_json(409, {"error": "The selected device changed. Refresh before playback."})
+                    return
+                home_assistant.play(self.selected_player(), album["spotify_uri"], device_id=device_id)
                 self.send_json(200, {"requested": True})
             elif path == "/api/player/control" and method == "POST":
                 body = self.body()
@@ -183,7 +205,14 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                 if "expected_entity" in body and body["expected_entity"] != entity_id:
                     self.send_json(409, {"error": "The selected player changed. Refresh the player before adjusting volume."})
                     return
-                home_assistant.control(entity_id, action, body.get("volume"))
+                device_id = db.get_state("spotify_connect_device")
+                if "expected_device" in body and body["expected_device"] != device_id:
+                    self.send_json(409, {"error": "The selected device changed. Refresh before using playback controls."})
+                    return
+                if device_id:
+                    home_assistant.control(entity_id, action, body.get("volume"), device_id=device_id)
+                else:
+                    home_assistant.control(entity_id, action, body.get("volume"))
                 self.send_json(200, {"requested": True})
             elif path == "/api/genres" and method == "GET":
                 self.send_json(200, db.genres(integer(param("limit", 200), "limit", 1, 500)))

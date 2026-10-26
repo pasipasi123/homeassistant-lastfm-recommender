@@ -64,7 +64,9 @@ class HomeAssistant:
             result.append({"entity_id": entity_id, "name": attributes.get("friendly_name", entity_id),
                            "state": state.get("state"), "source": attributes.get("source"),
                            "title": attributes.get("media_title"), "artist": attributes.get("media_artist"),
-                           "volume_level": attributes.get("volume_level")})
+                           "volume_level": attributes.get("volume_level"),
+                           "devices": sorted({name for name in (attributes.get("source_list") or [])
+                                              if isinstance(name, str) and name.strip() and name not in ("*", "ACTIVE")})})
         return sorted(result, key=lambda player: str(player["name"]).casefold())
 
     def validate_player(self, entity_id):
@@ -75,17 +77,26 @@ class HomeAssistant:
             raise HomeAssistantError("The selected SpotifyPlus player is unavailable in Home Assistant.")
         return player
 
-    def play(self, entity_id, uri):
-        self.validate_player(entity_id)
-        self._request("/services/spotifyplus/player_media_play_context",
-                      {"entity_id": entity_id, "context_uri": uri})
+    def validate_device(self, player, device_id):
+        if not isinstance(device_id, str) or not device_id or device_id not in player.get("devices", []):
+            raise HomeAssistantError("The selected Spotify Connect device is unavailable. Refresh devices or choose another device.")
 
-    def control(self, entity_id, action, volume=None):
+    def play(self, entity_id, uri, device_id=None):
+        player = self.validate_player(entity_id)
+        self.validate_device(player, device_id)
+        self._request("/services/spotifyplus/player_media_play_context",
+                      {"entity_id": entity_id, "context_uri": uri, "device_id": device_id})
+
+    def control(self, entity_id, action, volume=None, device_id=None):
         services = {"pause": "media_pause", "resume": "media_play", "next": "media_next_track",
                     "volume": "volume_set", "volume_up": "volume_set", "volume_down": "volume_set"}
         if action not in services:
             raise ValueError("Unsupported player control")
         player = self.validate_player(entity_id)
+        if device_id is not None:
+            self.validate_device(player, device_id)
+            if player.get("source") != device_id:
+                raise HomeAssistantError("Spotify is active on another device. Play an album on the selected device first.")
         data = {"entity_id": entity_id}
         if action in ("volume_up", "volume_down"):
             current = player.get("volume_level")
@@ -97,4 +108,12 @@ class HomeAssistant:
             if isinstance(volume, bool) or not isinstance(volume, (int, float)) or not 0 <= volume <= 1:
                 raise ValueError("Volume must be between 0 and 1")
             data["volume_level"] = volume
-        self._request("/services/media_player/" + services[action], data)
+        if device_id is not None:
+            targeted = {"pause": "player_media_pause", "resume": "player_media_resume", "next": "player_media_skip_next",
+                        "volume": "player_set_volume_level", "volume_up": "player_set_volume_level", "volume_down": "player_set_volume_level"}
+            data["device_id"] = device_id
+            if "volume_level" in data:
+                data["volume_level"] = round(data["volume_level"] * 100, 6)
+            self._request("/services/spotifyplus/" + targeted[action], data)
+        else:
+            self._request("/services/media_player/" + services[action], data)
