@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Honor Spotify HTTP 429 Retry-After deadlines without immediately retrying the request.
+- Persist the album lookup cooldown across worker cycles, manual requests and app restarts; keep Last.fm updates independent.
+- Show the scheduled resume time in Album library and disable manual Spotify lookup requests during the cooldown.
+- Use a 15-minute fallback when Retry-After is absent or invalid, and support both delay seconds and HTTP dates.
+
 ## 0.3.0
 
 - Choose Light, Dark or Colorful under Music Settings → Appearance; Light preserves the current palette.

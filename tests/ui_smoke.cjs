@@ -95,6 +95,19 @@ const path = require('node:path');
     await music.getByRole('combobox',{name:'SpotifyPlus player',exact:true}).selectOption('media_player.demo_music');
     await music.getByRole('button',{name:'Save player',exact:true}).click();
     await music.waitForFunction(()=>document.querySelector('#player-setup').textContent.includes('Saved player:'));
+    await music.route('**/api/status',async route=>{
+      const response=await route.fetch();
+      await route.fulfill({response,json:{...await response.json(),spotify_configured:true,
+        spotify_retry_at:Math.floor(Date.now()/1000)+3600,spotify_error:'API quota exceeded; requests paused'}});
+    });
+    await music.getByRole('button',{name:'Album library',exact:true}).click();
+    await music.getByRole('button',{name:'Refresh albums',exact:true}).click();
+    await music.waitForFunction(()=>document.querySelector('#spotify-status').textContent.includes('album lookups paused until'));
+    assert.equal(await music.getByRole('button',{name:'Find Spotify links',exact:true}).isEnabled(),false);
+    assert.equal(await music.locator('#albums').getByRole('button',{name:'Play this album',exact:true}).isEnabled(),true);
+    await music.unroute('**/api/status');
+    await music.getByRole('button',{name:'Refresh albums',exact:true}).click();
+    await music.waitForFunction(()=>!document.querySelector('#message').textContent.includes('quota exceeded'));
     await music.getByRole('button',{name:'Discover',exact:true}).click();
     await music.locator('#genres').getByRole('button',{name:'indie folk (1)',exact:true}).click();
     assert.equal(requests.filter(request=>request.path.endsWith('/api/recommend')).length,0);

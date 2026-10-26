@@ -1,8 +1,11 @@
 """Small rate-limited API clients. Never include request URLs or credentials in errors."""
 import base64
 import json
+import math
 import threading
 import time
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -11,9 +14,27 @@ from database import normalized, spotify_uri
 
 
 class ServiceError(Exception):
-    def __init__(self, message, code=None):
+    def __init__(self, message, code=None, retry_after=None):
         super().__init__(message)
         self.code = code
+        self.retry_after = retry_after
+
+
+def retry_after_seconds(value):
+    """Honor delta seconds or HTTP dates; use a conservative fallback if missing."""
+    try:
+        seconds = int(value)
+        if seconds < 0:
+            raise ValueError
+        return max(1, seconds)
+    except (ValueError, TypeError, OverflowError):
+        try:
+            until = parsedate_to_datetime(value)
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=timezone.utc)
+            return max(1, math.ceil(until.timestamp() - time.time()))
+        except (ValueError, TypeError, OverflowError, AttributeError):
+            return 15 * 60
 
 
 def request_json(url, *, data=None, headers=None, stop=None):
@@ -38,14 +59,11 @@ def request_json(url, *, data=None, headers=None, stop=None):
             if error.code != 429 and error.code < 500:
                 raise ServiceError(f"API HTTP {error.code}; check credentials, permissions and API access") from None
             if error.code == 429:
-                # A long quota cooldown is left for the next scheduled run.
-                try:
-                    retry_after = int(error.headers.get("Retry-After", delay))
-                except ValueError:
-                    retry_after = delay
-                if retry_after > 120:
-                    raise ServiceError("API quota exceeded; retry on a later sync") from None
-                delay = max(delay, retry_after)
+                # Let the worker persist the deadline instead of blocking or
+                # retrying early on its next five-minute enrichment cycle.
+                retry_after = retry_after_seconds((error.headers or {}).get("Retry-After"))
+                raise ServiceError(f"API quota exceeded; album requests paused for {retry_after} seconds",
+                                   code=429, retry_after=retry_after) from None
         except (URLError, TimeoutError, OSError, ValueError):
             pass
         if attempt < 3 and stop.wait(delay):

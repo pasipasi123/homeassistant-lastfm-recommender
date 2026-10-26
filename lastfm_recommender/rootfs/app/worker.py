@@ -60,12 +60,17 @@ class Worker:
     def enrich(self):
         for method, error_key in ((self.enrich_metadata, "enrichment_error"),
                                   (self.enrich_spotify, "spotify_error")):
+            if error_key == "spotify_error" and self.spotify_paused():
+                continue
             self.db.set_state(error_key, None)
             try:
                 method()
             except Exception as error:
                 message = str(error) if isinstance(error, ServiceError) else type(error).__name__
-                self.db.set_state(error_key, message)
+                with self.db.connect() as conn:
+                    self.db.set_state(error_key, message, conn)
+                    if error_key == "spotify_error" and isinstance(error, ServiceError) and error.retry_after is not None:
+                        self.db.set_state("spotify_retry_at", int(time.time()) + error.retry_after + 1, conn)
                 LOG.warning("Album update stopped (%s): %s", error_key, message)
                 if not isinstance(error, ServiceError):
                     # Keep values, source lines, URLs and credentials out of logs.
@@ -87,9 +92,13 @@ class Worker:
                 tags, image = [], None
             self.db.save_enrichment(album["id"], tags, image, None)
 
+    def spotify_paused(self):
+        return (self.db.get_state("spotify_retry_at") or 0) > time.time()
+
     def enrich_spotify(self):
-        if not self.settings.spotify_client_id:
+        if not self.settings.spotify_client_id or self.spotify_paused():
             return
+        self.db.set_state("spotify_retry_at", None)
         for album in self.db.spotify_queue(self.settings.enrich_batch_size, self.settings.spotify_market):
             if self.stop.is_set():
                 return

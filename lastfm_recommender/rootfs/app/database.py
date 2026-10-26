@@ -205,7 +205,7 @@ class Database:
                     "spotify_candidates": conn.execute(
                         "SELECT COUNT(*) FROM albums WHERE spotify_status='candidate'").fetchone()[0],
                     **{key: self.get_state(key, conn) for key in
-                       ("last_sync_at", "last_error", "import", "enrichment_error", "spotify_error", "timezone")}}
+                       ("last_sync_at", "last_error", "import", "enrichment_error", "spotify_error", "spotify_retry_at", "timezone")}}
 
     @staticmethod
     def album_result(conn, row):

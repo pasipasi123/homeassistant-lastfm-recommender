@@ -2,6 +2,8 @@
 
 **Language requirement:** All application UI text, messages, user documentation and Home Assistant script labels must be in English. Existing entity IDs and original music metadata must not be translated.
 
+**Spotify cooldown (0.3.1):** HTTP 429 stops the request immediately and persists Spotify's Retry-After deadline. Scheduled/manual enrichment and restarts respect it without repeated Spotify requests or warnings; Last.fm enrichment continues. Album library displays the resume time. This prevents early retries but cannot clear Spotify's server-side limit or recover an independently stuck SpotifyPlus service call.
+
 **Appearance (0.3.0):** Music Settings offers Light (the existing palette), Dark and Colorful. Theme selection stays in browser local storage, loads before styles and works for the current page if storage is blocked. All panels, controls and feedback use shared palette variables; browser verification covers contrast, mobile layout and persistence.
 
 **UI and reliability update (0.2.3):** Refresh Music with a light blue/coral palette; handle Last.fm's empty tag/image fields and identify background errors. Add numeric volume and fine adjustment buttons with configurable display min/max, decimals and step. Read the current SpotifyPlus volume before step changes, keep values in HA's 0–1 range and disable volume controls when no reading exists. Sidebar playback on the target installation has been confirmed by the user; the new settings and error recovery have offline/browser coverage.

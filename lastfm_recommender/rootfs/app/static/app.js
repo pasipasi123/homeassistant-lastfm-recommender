@@ -111,11 +111,13 @@ async function status() {
     `${data.confirmed_albums} confirmed Spotify links. Last successful sync: ${date(data.last_sync_at)}. ` +
     `${data.phase === "enrichment" ? "Updating album metadata." : data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
   $("#sync").disabled = data.running || data.pending;
-  $("#enrich").disabled = !data.spotify_configured || !data.enrichment_enabled || data.running || data.pending || data.enrichment_pending;
+  const spotifyPaused = data.spotify_retry_at && data.spotify_retry_at * 1000 > Date.now();
+  $("#enrich").disabled = !data.spotify_configured || !data.enrichment_enabled || data.running || data.pending || data.enrichment_pending || spotifyPaused;
   $("#spotify-status").textContent = !data.spotify_configured
     ? "Add Spotify Client ID and Secret in the app configuration to find album links automatically."
     : `${data.confirmed_albums} linked albums (${data.automatic_albums} matched automatically) · ${data.spotify_candidates} awaiting review. Market: ${data.spotify_market}. ` +
       (!data.enrichment_enabled ? "Album updates are disabled; set enrich_batch_size above zero in app configuration."
+        : spotifyPaused ? `Spotify rate limit: album lookups paused until ${date(data.spotify_retry_at)}. Last.fm updates continue.`
         : data.enrichment_pending ? "Album updates queued."
         : "Links are checked in small background batches. Use Refresh albums to see new matches.");
   metadataErrors = [["History sync", data.last_error], ["Last.fm metadata", data.enrichment_error],
