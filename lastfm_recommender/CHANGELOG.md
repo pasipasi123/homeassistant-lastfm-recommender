@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4.1
+
+- Filter Spotify suggestions by full artist names, so Arca no longer shows Arcane or other substring matches. Keep genuine collaborations and same-artist edition alternatives for review.
+- Apply the same filter to cached suggestions when displaying albums, without additional Spotify requests or changing confirmed playback links.
+
 ## 0.3.4
 
 - Raise the default recommendation threshold to 20 track scrobbles per album.

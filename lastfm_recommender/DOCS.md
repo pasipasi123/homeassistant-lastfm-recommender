@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.4 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.4.1 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -96,6 +96,8 @@ Synchronization is additive. Deleted source scrobbles and corrections to old nam
 A forgotten favorite meets the minimum scrobble count and last-listened age cutoff. The cutoff uses UTC calendar years, clamping February 29 to February 28 as needed. Matching albums are selected randomly and can occasionally repeat. Genre matches are exact and case-insensitive. Original names are preserved; spelling variants and editions are not merged automatically. Missing album names remain in history but do not create album recommendations.
 
 ## Find and confirm Spotify links
+
+Catalogue search suggestions must contain the full requested artist name (with case, whitespace and Unicode normalization), rather than just a substring. A genuine collaboration containing that artist may still be shown for review; automatic matching remains stricter. The same artist filter is applied when reading cached suggestions, so irrelevant old results disappear without another Spotify request. Confirmed playback links are kept.
 
 **Settings → Find links by artist** runs one bounded artist batch through SpotifyPlus. Eligible artists have at least three unconfirmed albums with at least 20 track scrobbles per album and an already confirmed album link to establish identity. The batch chooses up to five artists, prioritizing missing album count and listening count. Artists without a confirmed reference are left for normal album searches.
 

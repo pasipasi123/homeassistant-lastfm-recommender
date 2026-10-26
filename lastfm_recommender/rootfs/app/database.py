@@ -15,6 +15,38 @@ def normalized(value):
     return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
 
 
+def matching_artist(artists, expected):
+    """Full artist names only: Arca must not match Arcane or substring names."""
+    if not isinstance(artists, list) or not artists:
+        return False
+    artists = [name.get("name") if isinstance(name, dict) else name for name in artists]
+    if any(not isinstance(name, str) for name in artists):
+        return False
+    expected = normalized(expected)
+    return any(normalized(name) == expected for name in artists) or normalized(", ".join(artists)) == expected
+
+
+def relevant_candidates(value, artist):
+    """Filter cached search noise when reading; retain confirmed links and legacy metadata."""
+    try:
+        candidate = json.loads(value)
+    except (TypeError, ValueError):
+        return value
+    if not isinstance(candidate, dict):
+        return value
+    choices = candidate.get("alternatives", [candidate])
+    if not isinstance(choices, list):
+        return value
+    filtered = [item for item in choices if isinstance(item, dict) and
+               ("artists" not in item or matching_artist(item["artists"], artist))]
+    if filtered == choices:
+        return value
+    choices = filtered
+    if not choices:
+        return None
+    return json.dumps({**candidate, **choices[0], "alternatives": choices})
+
+
 def album_tags(tags):
     """Year tags are album metadata, not genres; conflicting years stay unknown."""
     cleaned = {normalized(tag) for tag in tags if tag.strip()}
@@ -218,6 +250,7 @@ class Database:
         if row is None:
             return None
         result = dict(row)
+        result["spotify_candidate"] = relevant_candidates(result.get("spotify_candidate"), result["artist"])
         result["tags"] = [r[0] for r in conn.execute(
             "SELECT tag FROM album_tags WHERE album_id=? ORDER BY tag", (row["id"],))]
         return result

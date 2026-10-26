@@ -94,6 +94,8 @@ const path = require('node:path');
     music.on('request',request=>requests.push({path:new URL(request.url()).pathname,headers:request.headers()}));
     await music.goto(`http://127.0.0.1:${ports.ingress}${prefix}`);
     await music.locator('#genres button').first().waitFor();
+    await music.locator('#albums h3').waitFor();
+    assert.equal(await music.locator('#albums').getByText('Sufjan Stevens Orchestra',{exact:false}).count(),0);
     assert.equal(await music.locator('input[name="min_total_scrobbles"]').inputValue(),'20');
     assert.equal(await music.locator('#auth').isVisible(),false);
     assert.equal(await music.locator('#token').inputValue(),'');

@@ -76,7 +76,9 @@ with tempfile.TemporaryDirectory() as folder:
     choices = [{"uri": "spotify:album:0S2DmRfqWM51FUprHs0qil", "name": "Illinois",
                 "artists": ["Sufjan Stevens"], "release_date": "2005-07-04", "total_tracks": 22},
                {"uri": "spotify:album:" + "A" * 22, "name": "Illinois (Deluxe)",
-                "artists": ["Sufjan Stevens"], "release_date": "2015", "total_tracks": 25}]
+                "artists": ["Sufjan Stevens"], "release_date": "2015", "total_tracks": 25},
+               {"uri": "spotify:album:" + "B" * 22, "name": "Illinois",
+                "artists": ["Sufjan Stevens Orchestra"], "release_date": "2020", "total_tracks": 12}]
     db.save_enrichment(album_id, ["2005"], None, None)
     db.save_spotify_match(album_id, {**choices[0], "confidence": "unverified",
                                     "alternatives": choices, "complete": True}, "FI")

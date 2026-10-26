@@ -41,13 +41,38 @@ class SpotifyMatchingTests(DatabaseCase):
         self.assertEqual(result["confidence"], "exact_unique")
         self.assertEqual(len(result["alternatives"]), 2)
 
-    def test_ambiguous_versions_wrong_artist_and_suffixes_need_review(self):
+    def test_ambiguous_versions_collaborations_and_suffixes_need_review(self):
         for items in ([item(), item(OTHER_URI)], [item(name="Illinois (Remastered)")],
-                      [item(artist="Other Artist")],
                       [item(artists=[{"name": "Sufjan Stevens"}, {"name": "Other"}])],
                       [item(restrictions={"reason": "market"})]):
             with self.subTest(items=items):
                 self.assertEqual(self.search(items)["confidence"], "unverified")
+
+    def test_wrong_artists_and_substring_names_are_excluded(self):
+        self.assertIsNone(self.search([item(artist="Other Artist")]))
+        self.assertIsNone(self.search([item(artist="Sufjan Stevens Orchestra")]))
+        with patch("clients.request_json", side_effect=[
+                {"access_token": "private", "expires_in": 3600},
+                {"albums": {"items": [item(name="Arca", artist="Arca"),
+                                        item(OTHER_URI, name="Arcane", artist="Arcane, League of Legends")], "next": None}}]):
+            result = self.client().search_album(track(artist="Arca", album="Arca"))
+        self.assertEqual(len(result["alternatives"]), 1)
+        self.assertEqual(result["confidence"], "exact_unique")
+
+    def test_cached_candidates_are_filtered_without_changing_the_confirmed_link(self):
+        self.add([track(artist="Arca", album="Arca")])
+        album_id = self.db.albums()[0]["id"]
+        good = {"uri": URI, "name": "Arca", "artists": ["Arca"], "exact": True}
+        wrong = {"uri": OTHER_URI, "name": "Arcane", "artists": ["Arcane, League of Legends"], "exact": False}
+        candidate = {**good, "confidence": "exact_unique", "alternatives": [good, wrong]}
+        self.db.save_spotify_match(album_id, candidate, "FI")
+        album = self.db.album(album_id)
+        self.assertEqual(album["spotify_uri"], URI)
+        self.assertEqual(json.loads(album["spotify_candidate"])["alternatives"], [good])
+        self.db.save_enrichment(album_id, [], None, {**wrong, "alternatives": [wrong]})
+        album = self.db.album(album_id)
+        self.assertIsNone(album["spotify_candidate"])
+        self.assertEqual(album["spotify_uri"], URI)
 
     def test_case_spacing_and_unicode_are_normalized_but_punctuation_is_kept(self):
         self.assertEqual(self.search([item(name="  ILLINOIS  ", artist="Ｓufjan Stevens")])["confidence"], "exact_unique")

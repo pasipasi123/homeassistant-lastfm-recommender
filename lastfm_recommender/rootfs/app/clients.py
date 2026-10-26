@@ -10,7 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from database import normalized, spotify_uri
+from database import matching_artist, normalized, spotify_uri
 
 
 class ServiceError(Exception):
@@ -166,6 +166,8 @@ class Spotify:
                     continue
                 seen.add(uri)
                 artists = [a["name"] for a in item.get("artists", [])]
+                if not matching_artist(artists, album["artist"]):
+                    continue
                 exact = (normalized(item["name"]) == normalized(album["album"]) and
                          [normalized(a) for a in artists] == [normalized(album["artist"])])
                 candidates.append({"uri": uri, "name": item["name"], "artists": artists,
