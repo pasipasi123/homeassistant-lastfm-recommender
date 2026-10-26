@@ -10,7 +10,7 @@
 </head>
 <body>
 <main>
-  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.3.2</p>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.3.3</p>
     <h1>Music</h1><p>Your listening history, rediscovered.</p></header>
   <nav aria-label="Music pages">
     <button id="nav-music" type="button" aria-pressed="true">Discover</button>
@@ -70,6 +70,10 @@
       <button id="refresh-devices" type="button" class="secondary">Refresh devices</button>
     </form>
     <p id="device-status" class="service-note"></p>
+    <h3>Saved Spotify albums</h3>
+    <p>Match albums saved in your Spotify library to your Last.fm history through SpotifyPlus. Existing confirmed links are kept. This does not start playback.</p>
+    <button id="import-spotify-library" type="button" class="secondary" disabled>Import saved Spotify albums</button>
+    <p id="spotify-library-status" class="service-note"></p>
   </section>
   <section id="discovery-section" class="panel" aria-labelledby="recommend-heading">
     <h2 id="recommend-heading">Find an album</h2>

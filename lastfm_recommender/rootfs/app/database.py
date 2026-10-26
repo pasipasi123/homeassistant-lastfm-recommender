@@ -207,7 +207,7 @@ class Database:
                     "spotify_candidates": conn.execute(
                         "SELECT COUNT(*) FROM albums WHERE spotify_status='candidate'").fetchone()[0],
                     **{key: self.get_state(key, conn) for key in
-                       ("last_sync_at", "last_error", "import", "enrichment_error", "lastfm_retry_at", "spotify_error", "spotify_retry_at", "timezone")}}
+                       ("last_sync_at", "last_error", "import", "enrichment_error", "lastfm_retry_at", "spotify_error", "spotify_retry_at", "spotify_library_import", "timezone")}}
 
     @staticmethod
     def album_result(conn, row):
@@ -360,3 +360,31 @@ class Database:
                 source.backup(target)
             finally:
                 target.close()
+
+    def match_saved_albums(self, albums, entity_id):
+        """Match a complete library snapshot atomically; never replace confirmed links."""
+        index = {}
+        for album in albums:
+            key = (normalized(", ".join(album["artists"])), normalized(album["name"]))
+            index.setdefault(key, {})[spotify_uri(album["uri"])] = album
+        linked, review = 0, 0
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if self.get_state("spotifyplus_entity", conn) != entity_id:
+                raise ValueError("SpotifyPlus account changed during import")
+            rows = conn.execute("SELECT id, artist, album FROM albums WHERE spotify_status != 'confirmed'").fetchall()
+            for row in rows:
+                choices = list(index.get((normalized(row["artist"]), normalized(row["album"])), {}).values())
+                if not choices:
+                    continue
+                automatic = len(choices) == 1 and not choices[0]["restricted"]
+                candidate = {**choices[0], "alternatives": choices, "complete": True,
+                             "confidence": "saved_exact_unique" if automatic else "unverified",
+                             "source": "spotify_library"}
+                conn.execute("""UPDATE albums SET spotify_candidate=?, spotify_uri=?, spotify_status=?,
+                    spotify_match_source=? WHERE id=? AND spotify_status != 'confirmed'""",
+                    (json.dumps(candidate), choices[0]["uri"] if automatic else None,
+                     "confirmed" if automatic else "candidate", "saved_library" if automatic else None, row["id"]))
+                linked += int(automatic)
+                review += int(not automatic)
+        return {"linked": linked, "review": review}

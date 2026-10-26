@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.3.2** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.3.3** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -53,6 +53,8 @@ Tag lookup has its own settings: `lastfm_batch_size` defaults to 50 albums and `
 Four-digit year tags are moved to album metadata and displayed beside album names, rather than as genre buttons. Conflicting years remain unknown; decade tags such as `2000s` stay in the cloud.
 
 ## Recommended: automatic Spotify links
+
+Start with **Settings → Import saved Spotify albums** if you save albums in Spotify. The app reads the selected SpotifyPlus account's library in pages of 50, then compares artist/title pairs locally with Last.fm albums. A single exact matching edition is linked automatically; ambiguous or restricted editions are left for review. Already confirmed links are kept. This uses SpotifyPlus's existing login, does not require catalogue credentials, and never starts playback or changes your Spotify library. The result reports how many albums were read, linked and left for review. Albums you listened to but never saved in Spotify still need the searches below or manual links.
 
 Add Spotify Client ID/Secret in the app configuration, set `spotify_market` to your account country (default `FI`), and restart. This is recommended for everyday use: it avoids manually copying Spotify links for each album in your history. Without these credentials, links must be pasted and confirmed manually before albums can be played from Music.
 

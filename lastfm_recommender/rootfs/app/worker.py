@@ -6,6 +6,7 @@ import traceback
 from pathlib import Path
 
 from clients import LastFM, ServiceError, Spotify
+from homeassistant import HomeAssistantError
 
 LOG = logging.getLogger(__name__)
 
@@ -22,6 +23,68 @@ class Worker:
         self.pending = True
         self.enrichment_pending = False
         self.metadata_pending = False
+        self.home_assistant = None
+        self.library_pending = False
+        previous_library = self.db.get_state("spotify_library_import")
+        if previous_library and previous_library.get("status") in ("queued", "running"):
+            self.db.set_state("spotify_library_import", {**previous_library, "status": "interrupted"})
+
+    def request_library(self, entity_id):
+        with self.lock:
+            previous = self.db.get_state("spotify_library_import") or {}
+            if (self.running or self.pending or self.library_pending or not self.home_assistant or
+                    not self.home_assistant.available or (previous.get("retry_at") or 0) > time.time()):
+                return False
+            self.db.set_state("spotify_library_import", {"status": "queued", "entity_id": entity_id,
+                              "fetched": 0, "total": None})
+            self.library_pending = True
+            self.wake.set()
+            return True
+
+    def import_library(self):
+        job = self.db.get_state("spotify_library_import")
+        entity_id = job["entity_id"]
+        albums, total, offset = [], None, 0
+        try:
+            self.home_assistant.validate_player(entity_id)
+            while offset <= 10000:
+                if self.stop.is_set():
+                    self.db.set_state("spotify_library_import", {**job, "status": "interrupted"})
+                    return
+                if self.db.get_state("spotifyplus_entity") != entity_id:
+                    raise HomeAssistantError("SpotifyPlus account changed. Start the import again for the selected account.")
+                page = self.home_assistant.saved_albums(entity_id, offset)
+                if total is not None and total != page["total"]:
+                    raise HomeAssistantError("Your saved album count changed during import. Try again when library edits are finished.")
+                total = page["total"]
+                albums.extend(page["albums"])
+                offset += page["count"]
+                job = {**job, "status": "running", "fetched": offset, "total": total}
+                self.db.set_state("spotify_library_import", job)
+                if not page["has_more"]:
+                    if offset != total:
+                        raise HomeAssistantError("SpotifyPlus returned an incomplete library. Try the import again.")
+                    if len({album["uri"] for album in albums}) != len(albums):
+                        raise HomeAssistantError("Your saved library changed during paging. Try the import again when library edits are finished.")
+                    # Compare only after every page was read: later pages may
+                    # contain another edition with the same exact title.
+                    if self.stop.is_set():
+                        self.db.set_state("spotify_library_import", {**job, "status": "interrupted"})
+                        return
+                    result = self.db.match_saved_albums(albums, entity_id)
+                    self.db.set_state("spotify_library_import", {**job, **result, "status": "complete", "finished_at": int(time.time())})
+                    return
+                if not page["count"]:
+                    raise HomeAssistantError("SpotifyPlus returned an empty page before the end of your library.")
+                if self.stop.wait(0.5):
+                    self.db.set_state("spotify_library_import", {**job, "status": "interrupted"})
+                    return
+            raise HomeAssistantError("Saved library exceeds the supported paging range. No links were changed.")
+        except Exception as error:
+            message = str(error) if isinstance(error, HomeAssistantError) else "Saved album import stopped. Check the selected SpotifyPlus account and try again later."
+            self.db.set_state("spotify_library_import", {**job, "status": "error", "error": message,
+                              "retry_at": int(time.time()) + 900})
+            LOG.warning("Spotify saved album import stopped (%s)", type(error).__name__)
 
     def request_metadata(self):
         with self.lock:
@@ -133,6 +196,9 @@ class Worker:
             now = time.monotonic()
             with self.lock:
                 sync_due = self.pending or now >= next_sync
+                library_due = self.library_pending
+                if library_due:
+                    self.library_pending = False
                 enrichment_due = self.settings.enrich_batch_size > 0 and (
                     self.enrichment_pending or now >= next_enrichment)
                 metadata_due = self.settings.lastfm_batch_size > 0 and (
@@ -143,7 +209,7 @@ class Worker:
                     self.enrichment_pending = False
                 if sync_due:
                     self.pending = False
-                self.running = sync_due or enrichment_due or metadata_due
+                self.running = sync_due or enrichment_due or metadata_due or library_due
             if not self.running:
                 deadlines = [next_sync]
                 if self.settings.enrich_batch_size:
@@ -155,6 +221,9 @@ class Worker:
                 self.wake.clear()
                 continue
             try:
+                if library_due:
+                    self.phase = "spotify_library"
+                    self.import_library()
                 if sync_due:
                     self.phase = "sync"
                     try:

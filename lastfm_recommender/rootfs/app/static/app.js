@@ -9,6 +9,7 @@ let selectedDevice = null;
 let defaultDevice = null;
 let temporaryDevice = null;
 let availableDevices = [];
+let libraryActionBlocked = true;
 let deviceDraft = null;
 let deviceSaving = false;
 let controlReady = false;
@@ -148,8 +149,18 @@ async function status() {
   const progress = data.import ? ` Import page ${data.import.page}/${data.import.total_pages || "?"}.` : "";
   $("#status").textContent = `${data.scrobbles.toLocaleString("en-GB")} scrobbles · ${data.albums} albums · ` +
     `${data.confirmed_albums} confirmed Spotify links. Last successful sync: ${date(data.last_sync_at)}. ` +
-    `${data.phase === "enrichment" ? "Updating album metadata." : data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
+    `${data.phase === "spotify_library" ? "Importing saved Spotify albums." : data.phase === "enrichment" ? "Updating album metadata." : data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
   $("#sync").disabled = data.running || data.pending;
+  const library = data.spotify_library_import;
+  const libraryPaused = library?.retry_at && library.retry_at * 1000 > Date.now();
+  libraryActionBlocked = data.running || data.pending || ["queued", "running"].includes(library?.status) || libraryPaused;
+  $("#import-spotify-library").disabled = !playbackAvailable || !selectedPlayer || libraryActionBlocked;
+  $("#spotify-library-status").textContent = !library ? "Import your saved albums to find links without searching for each album separately."
+    : library.status === "complete" ? `Read ${library.fetched} saved albums. ${library.linked} Last.fm albums linked; ${library.review} need edition review. Existing confirmed links were kept.`
+    : library.status === "queued" ? "Saved album import queued."
+    : library.status === "running" ? `Reading saved Spotify albums: ${library.fetched} of ${library.total ?? "?"}. Links are matched after all pages are read.`
+    : library.status === "interrupted" ? "The saved album import was interrupted. Start it again to read the library from the beginning."
+    : `${library.error || "Saved album import failed."}${libraryPaused ? ` You can try again after ${resumeTime(library.retry_at)}.` : ""}`;
   const metadataPaused = data.lastfm_retry_at && data.lastfm_retry_at * 1000 > Date.now();
   $("#metadata-status").textContent = `Last.fm album details checked: ${data.metadata_checked ?? 0} of ${data.albums}. ` +
     `${data.tagged_albums ?? 0} ${data.tagged_albums === 1 ? "album has" : "albums have"} tags; some albums have no tags on Last.fm. ` +
@@ -250,6 +261,7 @@ function albumCard(album, editable = true) {
     link.href = "https://open.spotify.com/album/" + album.spotify_uri.split(":").pop();
     link.target = "_blank"; link.rel = "noopener noreferrer";
     if (album.spotify_match_source === "automatic") element("p", "Automatically linked: unique exact artist and album name match. You can change the edition below.", content);
+    if (album.spotify_match_source === "saved_library") element("p", "Linked from your saved Spotify albums: exact artist and album name match. You can change the edition below.", content);
   }
   if (playbackAvailable) {
     const playback = element("div", undefined, content); playback.className = "album-playback";
@@ -446,6 +458,7 @@ async function loadPlayers() {
     const effectiveDevice = temporaryDevice || defaultDevice;
     if (selectedPlayer !== data.selected_entity || selectedDevice !== effectiveDevice) resetVolume();
     selectedPlayer = data.selected_entity;
+    $("#import-spotify-library").disabled = !selectedPlayer || libraryActionBlocked;
     selectedDevice = effectiveDevice;
     const select = $("#player-select"); select.replaceChildren();
     const placeholder = element("option", "Select a SpotifyPlus player", select); placeholder.value = "";
@@ -497,6 +510,11 @@ $("#player-form").addEventListener("submit", async event => {
   } catch (error) { message(error.message, true); }
 });
 $("#refresh-players").addEventListener("click", loadPlayers);
+$("#import-spotify-library").addEventListener("click", async () => {
+  $("#import-spotify-library").disabled = true;
+  try { await api("api/spotify-library", {method:"POST", body:"{}"}); message("Saved Spotify album import queued."); await status(); }
+  catch (error) { message(error.message, true); await status(); }
+});
 $("#refresh-devices").addEventListener("click", loadPlayers);
 $("#device-select").addEventListener("change", event => { deviceDraft = event.target.value; });
 $("#device-form").addEventListener("submit", async event => {
@@ -551,6 +569,7 @@ $("#logout").addEventListener("click", () => {
   $("#player-state").textContent = "Disconnected."; $("#player-setup").textContent = "Connect to choose a player.";
   $("#player-select").replaceChildren(); selectedPlayer = null; playerDraft = null;
   playerReady = false; controlReady = false; selectedDevice = null; defaultDevice = null; temporaryDevice = null; availableDevices = []; deviceDraft = null;
+  libraryActionBlocked = true; $("#import-spotify-library").disabled = true; $("#spotify-library-status").textContent = "Connect to import saved albums.";
   $("#device-select").replaceChildren(); $("#device-status").textContent = "Connect to choose a device.";
   playerVolume = null; $("#volume-value").textContent = "—"; updatePlaybackButtons();
 });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+- Import saved Spotify albums through the selected SpotifyPlus account in Settings, using pages of 50 and local matching instead of one catalogue search per album.
+- Automatically link a unique exact artist/title match from the saved library; retain ambiguous or restricted editions for review. Existing confirmed links are never replaced.
+- Show import progress and results. Matching starts only after the complete snapshot is read; failed or interrupted imports leave links unchanged and can be restarted. No additional Spotify login or playback is triggered.
+
 ## 0.3.2
 
 - Give Last.fm tags their own batch size and schedule: up to 50 albums per batch with a one-minute pause by default, retaining sequential rate-limited requests. Spotify stays at its existing batch size and interval.

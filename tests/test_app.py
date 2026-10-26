@@ -251,6 +251,15 @@ class ApiTests(DatabaseCase):
         self.assertEqual(status["lastfm_batch_size"], 50)
         self.assertEqual(self.request("/api/metadata", "POST", {}, token="")[0], 401)
 
+    def test_saved_library_import_requires_auth_and_account_and_is_queued_once(self):
+        self.assertEqual(self.request("/api/spotify-library", "POST", {}, token="")[0], 401)
+        self.assertEqual(self.request("/api/spotify-library", "POST", {})[0], 503)
+        self.db.set_state("spotifyplus_entity", PLAYER)
+        self.assertEqual(self.request("/api/spotify-library", "POST", {})[0], 202)
+        self.assertEqual(self.request("/api/spotify-library", "POST", {})[0], 409)
+        self.ha.play.assert_not_called()
+        self.ha.control.assert_not_called()
+
     def test_spoofed_ingress_headers_do_not_bypass_direct_token(self):
         headers = {"X-Ingress-Path": "/api/hassio_ingress/fake", "X-Forwarded-For": "172.30.32.2",
                    "X-Remote-User-Id": "admin"}

@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.2 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.3 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -97,6 +97,12 @@ A forgotten favorite meets the minimum scrobble count and last-listened age cuto
 
 ## Find and confirm Spotify links
 
+**Settings → Import saved Spotify albums** reads the selected SpotifyPlus account's saved library using `spotifyplus.get_album_favorites`. Each request reads at most 50 albums with a short pause between pages. It uses the existing HA Core API connection and SpotifyPlus login, so no new OAuth login or catalogue credentials are needed. The import runs on the background worker and reports progress in Settings. It does not play music, save/remove Spotify albums, or add unheard albums to Last.fm history.
+
+Matching begins after the entire snapshot is read. Exact artist/title matches are compared locally without stripping edition suffixes. A unique unrestricted edition is linked; multiple exact editions or restricted editions become review candidates. Existing confirmed links are never replaced. Nonmatching albums remain on the regular catalogue lookup queue. Only the album metadata needed for matching is retained; the service's user profile and track lists are discarded.
+
+If paging fails, the library count changes, the account changes, or shutdown interrupts the import, no partial matches are applied. The job is not automatically repeated; use the button to start again from page zero. Failed requests impose a 15-minute retry pause to avoid repeatedly hitting an unavailable or rate-limited service. Changing the selected account during an import cancels matching. An import supports up to 10,050 saved albums within SpotifyPlus's paging range. This is not a Spotify rate-limit bypass: service errors stop the import.
+
 With Spotify catalogue credentials configured, a separate queue finds URIs for unlinked albums, including albums whose Last.fm metadata was already fetched. Each Spotify cycle processes up to `enrich_batch_size` albums. The default remains 10 Spotify lookups with five-minute pauses (up to 120 albums/hour before request time). API limits, history import and network delays can slow this down. **Find Spotify links** requests only the next Spotify batch when idle. **Settings → Update Last.fm tags** separately requests a metadata batch. Scheduled batches continue the remaining library. **Refresh albums** reloads the results without replacing forms while you edit.
 
 Last.fm metadata defaults to 50 albums per batch with a one-minute pause after completion. The queue checks never-processed albums first, ordered by listening count, then refreshes metadata older than 30 days. Empty metadata and unknown albums count as checked; they are not requested again on every cycle. **Settings → Library status** and the genre cloud distinguish checked albums from albums with tags. Some albums never receive tags because Last.fm has none for them. Metadata failures pause this queue for 15 minutes, or honor HTTP Retry-After when provided. The saved deadline survives app restarts and manual requests cannot bypass it. Spotify continues on its own schedule during a Last.fm metadata pause, and vice versa.
@@ -140,6 +146,7 @@ Direct HTTP is unencrypted. Use a trusted local network or your own HTTPS revers
 | `POST /api/sync` | Queue history sync; 202 accepted, 409 busy/queued |
 | `POST /api/enrich` | Queue next Spotify batch; 202 accepted, 409 busy/queued/disabled |
 | `POST /api/metadata` | Queue next Last.fm tag batch; 202 accepted, 409 busy/queued/disabled/paused |
+| `POST /api/spotify-library` | Queue the selected SpotifyPlus account's saved-album import; 202 accepted, 409 busy/queued/paused |
 | `POST /api/sync/reset` | Reset interrupted pagination and queue sync; preserves history |
 | `GET /api/backup` | Download a consistent SQLite backup |
 

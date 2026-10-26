@@ -23,6 +23,8 @@ Spotify catalogue credentials make the app practical for a large listening histo
 
 These credentials are separate from your Last.fm API key and SpotifyPlus login. They are used for catalogue searches; playback uses the SpotifyPlus integration you have already configured in Home Assistant. Installing SpotifyPlus alone does not enable the app's background URI search.
 
+For a shortcut, use **Music → Settings → Import saved Spotify albums**. This reads your saved Spotify albums through SpotifyPlus, 50 per page, and matches them locally to Last.fm history. No separate app login or catalogue credentials are needed for this import. Albums outside your saved library still need catalogue searches or manual links.
+
 The app also works without Spotify catalogue credentials, but each album's Spotify link must then be pasted and confirmed manually under **Album library** before it can be played from Music. Manual links are also available when API access is restricted or an album cannot be matched.
 
 ## Scope

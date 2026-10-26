@@ -6,6 +6,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from database import spotify_uri
+
 
 class HomeAssistantError(Exception):
     def __init__(self, message, status=None):
@@ -80,6 +82,33 @@ class HomeAssistant:
     def validate_device(self, player, device_id):
         if not isinstance(device_id, str) or not device_id or device_id not in player.get("devices", []):
             raise HomeAssistantError("The selected Spotify Connect device is unavailable. Refresh devices or choose another device.")
+
+    def saved_albums(self, entity_id, offset=0):
+        """Read one bounded page; discard the service's user profile and track data."""
+        response = self._request("/services/spotifyplus/get_album_favorites?return_response",
+                                 {"entity_id": entity_id, "limit": 50, "offset": offset, "sort_result": False})
+        data = response.get("service_response", {}).get("result", {}) if isinstance(response, dict) else {}
+        items, total = data.get("items"), data.get("total")
+        if (not isinstance(items, list) or len(items) > 50 or isinstance(total, bool) or
+                not isinstance(total, int) or total < 0 or data.get("offset") != offset):
+            raise HomeAssistantError("SpotifyPlus returned an invalid saved-album page. Import stopped without changing links.")
+        albums = []
+        for item in items:
+            album = item.get("album") if isinstance(item, dict) else None
+            if not isinstance(album, dict):
+                raise HomeAssistantError("SpotifyPlus returned an incomplete saved album. Import stopped without changing links.")
+            try:
+                uri = spotify_uri(album.get("uri", ""))
+                name = album["name"]
+                artists = [artist["name"] for artist in album["artists"]]
+                if not isinstance(name, str) or not name.strip() or not artists or any(not isinstance(a, str) or not a.strip() for a in artists):
+                    raise ValueError
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise HomeAssistantError("SpotifyPlus returned invalid album identifiers. Import stopped without changing links.") from None
+            albums.append({"uri": uri, "name": name, "artists": artists, "release_date": album.get("release_date", ""),
+                           "total_tracks": album.get("total_tracks"), "restricted": bool(album.get("restrictions")),
+                           "exact": True})
+        return {"albums": albums, "total": total, "has_more": bool(data.get("next")), "count": len(items)}
 
     def play(self, entity_id, uri, device_id=None):
         player = self.validate_player(entity_id)

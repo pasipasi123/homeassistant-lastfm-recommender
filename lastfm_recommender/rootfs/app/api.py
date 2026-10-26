@@ -138,7 +138,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
 
             if path == "/api/status" and method == "GET":
                 self.send_json(200, {**db.status(), "running": worker.running,
-                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.2",
+                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.3",
                                      "spotify_configured": bool(worker.settings.spotify_client_id),
                                      "spotify_market": worker.settings.spotify_market,
                                      "enrichment_enabled": worker.settings.enrich_batch_size > 0,
@@ -256,6 +256,15 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
             elif path == "/api/metadata" and method == "POST":
                 self.body()
                 accepted = worker.request_metadata()
+                self.send_json(202 if accepted else 409, {"accepted": accepted})
+            elif path == "/api/spotify-library" and method == "POST":
+                self.body()
+                if not home_assistant or not home_assistant.available:
+                    raise HomeAssistantError("SpotifyPlus library import is available on Home Assistant OS.")
+                entity_id = self.selected_player()
+                home_assistant.validate_player(entity_id)
+                worker.home_assistant = home_assistant
+                accepted = worker.request_library(entity_id)
                 self.send_json(202 if accepted else 409, {"accepted": accepted})
             elif path.startswith("/api/albums/") and method == "POST":
                 album_id = integer(path.removeprefix("/api/albums/"), "album id", 1, 2**63-1)

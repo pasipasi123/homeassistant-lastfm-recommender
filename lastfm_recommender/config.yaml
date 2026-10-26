@@ -1,5 +1,5 @@
 name: Last.fm Recommender
-version: "0.3.2"
+version: "0.3.3"
 slug: lastfm_recommender
 description: Rediscover forgotten albums from your Last.fm listening history
 url: https://github.com/pasipasi123/homeassistant-lastfm-recommender
