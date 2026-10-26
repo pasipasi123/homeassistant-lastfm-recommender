@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1.2
+
+- Show Spotify quota pauses as quiet, readable status notes in Album library and Settings instead of a persistent red Discover banner.
+- Display resume times to the next whole minute with today/tomorrow labels, rather than a raw seconds count.
+- Keep background update failures in Settings with plain-language summaries and optional collapsed technical details; foreground action errors remain visible.
+
 ## 0.3.1
 
 - Honor Spotify HTTP 429 Retry-After deadlines without immediately retrying the request.

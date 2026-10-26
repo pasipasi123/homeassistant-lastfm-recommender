@@ -18,7 +18,6 @@ let expandedGenres = false;
 let recommendationGeneration = 0;
 let backgroundMessage = false;
 const refreshErrors = new Map();
-let metadataErrors = [];
 $("#token").value = token;
 for (const input of document.querySelectorAll('input[name="theme"]')) {
   input.checked = input.value === document.documentElement.dataset.theme;
@@ -34,7 +33,7 @@ function authHeaders() {
   return !ingress && token ? {Authorization: `Bearer ${token}`} : {};
 }
 function backgroundErrors() {
-  const errors = [...metadataErrors, ...refreshErrors.values()];
+  const errors = [...refreshErrors.values()];
   if (errors.length) message(errors.join(" · "), true, true);
   else if (backgroundMessage) message("");
 }
@@ -86,6 +85,37 @@ async function api(path, options = {}) {
 function date(timestamp) {
   return timestamp ? new Date(timestamp * 1000).toLocaleString("en-GB") : "not yet";
 }
+function resumeTime(timestamp) {
+  // Round up: a minute-only label must not promise a retry before the deadline.
+  const until = new Date(Math.ceil(timestamp / 60) * 60000);
+  const now = new Date();
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+  const clock = until.toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit"});
+  if (until.toDateString() === now.toDateString()) return `${clock} today`;
+  if (until.toDateString() === tomorrow.toDateString()) return `${clock} tomorrow`;
+  return until.toLocaleDateString("en-GB", {day:"numeric", month:"short",
+    ...(until.getFullYear() !== now.getFullYear() ? {year:"numeric"} : {})}) + ` at ${clock}`;
+}
+function maintenanceStatus(data, pauseText) {
+  const notes = [];
+  const details = [];
+  if (data.last_error) {
+    notes.push("Listening history could not be updated. The app will try again automatically.");
+    details.push(`History sync: ${data.last_error}`);
+  }
+  if (data.enrichment_error) {
+    notes.push("Some album details could not be updated. You can continue using your library.");
+    details.push(`Last.fm metadata: ${data.enrichment_error}`);
+  }
+  if (pauseText) notes.push(pauseText);
+  else if (data.spotify_error) notes.push("Spotify album links could not be updated. You can still play linked albums.");
+  if (data.spotify_error) details.push(`Spotify lookup: ${data.spotify_error}`);
+  $("#background-status").textContent = notes.join(" ");
+  $("#background-status").hidden = !notes.length;
+  $("#background-details").hidden = !details.length;
+  if (!details.length) $("#background-details").open = false;
+  $("#background-details-text").textContent = details.join("\n");
+}
 function showView(view) {
   for (const name of ["music", "library", "settings"]) {
     $(`#nav-${name}`).setAttribute("aria-pressed", String(name === view));
@@ -112,17 +142,21 @@ async function status() {
     `${data.phase === "enrichment" ? "Updating album metadata." : data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
   $("#sync").disabled = data.running || data.pending;
   const spotifyPaused = data.spotify_retry_at && data.spotify_retry_at * 1000 > Date.now();
+  const pauseText = data.spotify_configured && data.spotify_retry_at
+    ? spotifyPaused ? `Spotify album lookup is paused until ${resumeTime(data.spotify_retry_at)}. You can still play linked albums.`
+      : "Spotify album lookup will resume with the next background update. You can still play linked albums."
+    : "";
   $("#enrich").disabled = !data.spotify_configured || !data.enrichment_enabled || data.running || data.pending || data.enrichment_pending || spotifyPaused;
   $("#spotify-status").textContent = !data.spotify_configured
     ? "Add Spotify Client ID and Secret in the app configuration to find album links automatically."
     : `${data.confirmed_albums} linked albums (${data.automatic_albums} matched automatically) · ${data.spotify_candidates} awaiting review. Market: ${data.spotify_market}. ` +
       (!data.enrichment_enabled ? "Album updates are disabled; set enrich_batch_size above zero in app configuration."
-        : spotifyPaused ? `Spotify rate limit: album lookups paused until ${date(data.spotify_retry_at)}. Last.fm updates continue.`
+        : pauseText ? "Last.fm updates continue in the background."
         : data.enrichment_pending ? "Album updates queued."
         : "Links are checked in small background batches. Use Refresh albums to see new matches.");
-  metadataErrors = [["History sync", data.last_error], ["Last.fm metadata", data.enrichment_error],
-    ["Spotify lookup", data.spotify_error]].filter(([, error]) => error);
-  metadataErrors = metadataErrors.map(([source, error]) => `${source}: ${error}`);
+  $("#spotify-pause").textContent = pauseText;
+  $("#spotify-pause").hidden = !pauseText;
+  maintenanceStatus(data, pauseText);
   backgroundErrors();
   await loadGenres();
 }
@@ -415,7 +449,10 @@ $("#auth").addEventListener("submit", async event => {
 });
 $("#logout").addEventListener("click", () => {
   resetVolume();
-  refreshErrors.clear(); metadataErrors = [];
+  refreshErrors.clear();
+  $("#background-status").textContent = ""; $("#background-status").hidden = true;
+  $("#background-details-text").textContent = ""; $("#background-details").hidden = true;
+  $("#spotify-pause").textContent = ""; $("#spotify-pause").hidden = true;
   token = ""; sessionStorage.removeItem("lastfm-token"); $("#token").value = "";
   $("#albums").replaceChildren(); clearRecommendation();
   $("#genres").replaceChildren(); $("#genre-status").textContent = "";

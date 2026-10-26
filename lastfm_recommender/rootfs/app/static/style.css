@@ -180,6 +180,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .genre-chip:nth-child(3n + 1) { background: var(--chip-alt-bg); color: var(--chip-alt-text); border-color: var(--chip-alt-line); }
 .genre-chip[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 #genre-status { font-size: .8rem; }
+.service-note { color: var(--muted); font-size: .85rem; border-left: 3px solid var(--line); padding: 2px 0 2px 12px; }
+#background-details summary { color: var(--muted); font-size: .8rem; font-weight: 500; }
+#background-details pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; color: var(--muted); }
 #now-playing { background: var(--player-bg); border-color: var(--player-line); }
 #now-playing h2 { color: var(--player-title); }
 input[type=range] { padding: 0; accent-color: var(--accent); background: transparent; }

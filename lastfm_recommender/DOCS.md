@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.1 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.1.2 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -100,6 +100,8 @@ The **Review … Spotify matches** section lists artwork, artist, title, release
 Successful and empty searches are cached for 30 days; failed requests remain pending. Confirmed links, including manually selected ones, are never overwritten by background searches. Spotify failures do not block Last.fm tags and Last.fm failures do not block Spotify lookups.
 
 If Spotify responds with HTTP 429, album searches pause until its `Retry-After` deadline (15 minutes if the header is absent or invalid). The deadline is saved in the database, survives app restarts and cannot be bypassed with manual sync or enrichment requests. Album library shows the resume time; Last.fm updates continue. A scheduled cycle at or after the deadline retries the pending album, without caching a quota response as a missing match. Updating or restarting this app does not clear a rate limit imposed by Spotify or a separate SpotifyPlus cooldown.
+
+Expected pauses appear as quiet status notes in Album library and Settings, without a red banner in Discover. Resume times use minutes and today/tomorrow labels, rounded up to avoid suggesting an earlier retry. Other background update failures have plain-language summaries under **Settings → Library status**; expand **Technical details** for the diagnostic message. Errors from an action you just requested, such as playback or volume changes, still appear at the top.
 
 In **Album library**, search for an artist or album. Open the correct edition in Spotify, select **⋯ → Share → Copy album link**, paste it and select **Confirm album link and tags**. Tags can be edited at the same time.
 

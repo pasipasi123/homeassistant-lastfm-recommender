@@ -10,7 +10,7 @@
 </head>
 <body>
 <main>
-  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.3.1</p>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.3.1.2</p>
     <h1>Music</h1><p>Your listening history, rediscovered.</p></header>
   <nav aria-label="Music pages">
     <button id="nav-music" type="button" aria-pressed="true">Discover</button>
@@ -45,6 +45,11 @@
   <section id="status-section" class="panel" aria-labelledby="status-heading" hidden>
     <h2 id="status-heading">Library status</h2>
     <p id="status">Connect to view the history import status.</p>
+    <p id="background-status" class="service-note" hidden></p>
+    <details id="background-details" hidden>
+      <summary>Technical details</summary>
+      <pre id="background-details-text"></pre>
+    </details>
     <div class="inline"><button id="sync" type="button">Sync history</button>
       <button id="backup" type="button" class="secondary">Download backup</button></div>
   </section>
@@ -100,6 +105,7 @@
     <h2 id="albums-heading">Album library</h2>
     <p>Unique exact artist and album matches are linked automatically. Review other editions below, or paste a Spotify album link.</p>
     <p id="spotify-status"></p>
+    <p id="spotify-pause" class="service-note" hidden></p>
     <div class="inline"><button id="enrich" type="button">Find Spotify links</button>
       <button id="refresh-albums" type="button" class="secondary">Refresh albums</button></div>
     <form id="search" class="inline"><label>Artist or album<input id="query" maxlength="200" placeholder="Search your library"></label><button>Search</button></form>

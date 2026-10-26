@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.3.1** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.3.1.2** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -61,7 +61,7 @@ Custom listening periods and household-presence rules are future settings. This 
 
 ## Troubleshooting
 
-- **Spotify rate limit**: Album library shows when album lookups can resume. The app respects Spotify's Retry-After deadline across restarts; Last.fm updates continue. Wait for the next scheduled cycle after that time. Restarting does not reset Spotify's limit.
+- **Spotify rate limit**: Album library and Settings show a quiet pause notice with the resume time, without a persistent error banner in Discover. The app respects Spotify's Retry-After deadline across restarts; Last.fm updates continue and linked albums can still be played. Wait for the next scheduled cycle after that time. Restarting does not reset Spotify's limit. Background diagnostics are available under **Settings → Library status → Technical details**.
 - **No SpotifyPlus players found**: check that SpotifyPlus is installed and configured in HA, then select **Refresh players**. There is no need to rename your entity to include `spotifyplus`.
 - **Home Assistant denied access**: update and restart the app so its `homeassistant_api` permission takes effect.
 - **No matching confirmed albums**: confirm more album links under **Album library**, loosen the filters or include unconfirmed albums to browse suggestions.
