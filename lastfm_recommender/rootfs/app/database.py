@@ -198,6 +198,8 @@ class Database:
         with self.connect() as conn:
             return {"scrobbles": conn.execute("SELECT COUNT(*) FROM scrobbles").fetchone()[0],
                     "albums": conn.execute("SELECT COUNT(*) FROM albums").fetchone()[0],
+                    "metadata_checked": conn.execute("SELECT COUNT(*) FROM albums WHERE enriched_at IS NOT NULL").fetchone()[0],
+                    "tagged_albums": conn.execute("SELECT COUNT(DISTINCT album_id) FROM album_tags").fetchone()[0],
                     "confirmed_albums": conn.execute(
                         "SELECT COUNT(*) FROM albums WHERE spotify_status='confirmed'").fetchone()[0],
                     "automatic_albums": conn.execute(
@@ -205,7 +207,7 @@ class Database:
                     "spotify_candidates": conn.execute(
                         "SELECT COUNT(*) FROM albums WHERE spotify_status='candidate'").fetchone()[0],
                     **{key: self.get_state(key, conn) for key in
-                       ("last_sync_at", "last_error", "import", "enrichment_error", "spotify_error", "spotify_retry_at", "timezone")}}
+                       ("last_sync_at", "last_error", "import", "enrichment_error", "lastfm_retry_at", "spotify_error", "spotify_retry_at", "timezone")}}
 
     @staticmethod
     def album_result(conn, row):
@@ -293,6 +295,7 @@ class Database:
                                 "matching_genres": len(contextual)},
                     "tagged_albums": conn.execute(
                         "SELECT COUNT(DISTINCT album_id) FROM album_tags").fetchone()[0],
+                    "metadata_checked": conn.execute("SELECT COUNT(*) FROM albums WHERE enriched_at IS NOT NULL").fetchone()[0],
                     "total_albums": conn.execute("SELECT COUNT(*) FROM albums").fetchone()[0]}
 
     def confirm_album(self, album_id, uri, tags=None):

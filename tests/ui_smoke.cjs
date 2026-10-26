@@ -395,6 +395,15 @@ const path = require('node:path');
     assert.equal(await blocked.locator('html').getAttribute('data-theme'),'dark');
     await blockedContext.close();
     await themeContext.close();
+    await music.getByRole('button',{name:'Settings',exact:true}).click();
+    assert.match(await music.locator('#metadata-status').innerText(),/Last.fm album details checked: 1 of 1/);
+    assert.match(await music.locator('#metadata-status').innerText(),/1 album has tags/);
+    const spotifyRequestsBeforeTags=requests.filter(request=>request.path.endsWith('/api/enrich')).length;
+    await music.getByRole('button',{name:'Update Last.fm tags',exact:true}).click();
+    await music.waitForFunction(()=>document.querySelector('#metadata-status').textContent.includes('Tag update queued'));
+    assert.equal(await music.getByRole('button',{name:'Update Last.fm tags',exact:true}).isEnabled(),false);
+    assert.equal(requests.filter(request=>request.path.endsWith('/api/enrich')).length,spotifyRequestsBeforeTags);
+    await music.screenshot({path:'.local-data/lastfm-tag-progress.png',fullPage:true,animations:'disabled'});
     assert.deepEqual(errors,[]);
     console.log('Browser smoke test passed: direct auth, prefixed ingress without login, player persistence, explicit playback, controls, mobile layout, backup.');
   } finally {

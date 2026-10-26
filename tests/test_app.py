@@ -241,6 +241,16 @@ class ApiTests(DatabaseCase):
         self.assertFalse(data["spotify_configured"])
         self.assertNotIn("secret", json.dumps(data))
 
+    def test_manual_tag_update_is_independent_from_spotify_queue(self):
+        self.assertEqual(self.request("/api/metadata", "POST", {})[0], 202)
+        self.assertEqual(self.request("/api/metadata", "POST", {})[0], 409)
+        self.assertTrue(self.worker.metadata_pending)
+        self.assertFalse(self.worker.enrichment_pending)
+        status = json.loads(self.request("/api/status")[1])
+        self.assertTrue(status["metadata_enabled"])
+        self.assertEqual(status["lastfm_batch_size"], 50)
+        self.assertEqual(self.request("/api/metadata", "POST", {}, token="")[0], 401)
+
     def test_spoofed_ingress_headers_do_not_bypass_direct_token(self):
         headers = {"X-Ingress-Path": "/api/hassio_ingress/fake", "X-Forwarded-For": "172.30.32.2",
                    "X-Remote-User-Id": "admin"}
@@ -510,6 +520,7 @@ class WorkerTests(DatabaseCase):
         clock = [0]
         stop = threading.Event()
         calls = []
+        batches = []
         class Wake:
             def wait(self, seconds):
                 clock[0] += seconds
@@ -521,10 +532,11 @@ class WorkerTests(DatabaseCase):
         worker.wake = Wake()
         with patch("worker.time.monotonic", side_effect=lambda: clock[0]), \
              patch.object(worker, "sync", side_effect=lambda: calls.append(("sync", clock[0]))), \
-             patch.object(worker, "enrich", side_effect=lambda: calls.append(("enrich", clock[0]))):
+             patch.object(worker, "enrich", side_effect=lambda **flags: batches.append((clock[0], flags))):
             worker.run()
         self.assertEqual([ts for kind, ts in calls if kind == "sync"], [0])
-        self.assertEqual([ts for kind, ts in calls if kind == "enrich"], [0, 300, 600, 900])
+        self.assertEqual([ts for ts, flags in batches if flags["spotify"]], [0, 300, 600, 900])
+        self.assertEqual([ts for ts, flags in batches if flags["metadata"]], list(range(0, 1200, 60)))
         self.assertFalse(worker.running)
         self.assertEqual(worker.phase, "idle")
     def test_restart_after_last_page_finishes_without_fetching_again(self):

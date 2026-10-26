@@ -111,7 +111,9 @@ function maintenanceStatus(data, pauseText) {
     details.push(`History sync: ${data.last_error}`);
   }
   if (data.enrichment_error) {
-    notes.push("Some album details could not be updated. You can continue using your library.");
+    notes.push(data.lastfm_retry_at && data.lastfm_retry_at * 1000 > Date.now()
+      ? `Last.fm album details are paused until ${resumeTime(data.lastfm_retry_at)}. You can continue using your library.`
+      : "Some album details could not be updated. You can continue using your library.");
     details.push(`Last.fm metadata: ${data.enrichment_error}`);
   }
   if (pauseText) notes.push(pauseText);
@@ -148,6 +150,14 @@ async function status() {
     `${data.confirmed_albums} confirmed Spotify links. Last successful sync: ${date(data.last_sync_at)}. ` +
     `${data.phase === "enrichment" ? "Updating album metadata." : data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
   $("#sync").disabled = data.running || data.pending;
+  const metadataPaused = data.lastfm_retry_at && data.lastfm_retry_at * 1000 > Date.now();
+  $("#metadata-status").textContent = `Last.fm album details checked: ${data.metadata_checked ?? 0} of ${data.albums}. ` +
+    `${data.tagged_albums ?? 0} ${data.tagged_albums === 1 ? "album has" : "albums have"} tags; some albums have no tags on Last.fm. ` +
+    (!data.metadata_enabled ? "Tag updates are disabled."
+      : metadataPaused ? `Updates paused until ${resumeTime(data.lastfm_retry_at)}.`
+      : data.metadata_pending ? "Tag update queued."
+      : `Up to ${data.lastfm_batch_size} albums per batch, with ${data.lastfm_interval_minutes} ${data.lastfm_interval_minutes === 1 ? "minute" : "minutes"} between batches.`);
+  $("#update-tags").disabled = !data.metadata_enabled || data.running || data.pending || data.metadata_pending || metadataPaused;
   const spotifyPaused = data.spotify_retry_at && data.spotify_retry_at * 1000 > Date.now();
   const pauseText = data.spotify_configured && data.spotify_retry_at
     ? spotifyPaused ? `Spotify album lookup is paused until ${resumeTime(data.spotify_retry_at)}. You can still play linked albums.`
@@ -157,7 +167,7 @@ async function status() {
   $("#spotify-status").textContent = !data.spotify_configured
     ? "Add Spotify Client ID and Secret in the app configuration to find album links automatically."
     : `${data.confirmed_albums} linked albums (${data.automatic_albums} matched automatically) · ${data.spotify_candidates} awaiting review. Market: ${data.spotify_market}. ` +
-      (!data.enrichment_enabled ? "Album updates are disabled; set enrich_batch_size above zero in app configuration."
+      (!data.enrichment_enabled ? "Spotify link updates are disabled; set enrich_batch_size above zero in app configuration."
         : pauseText ? "Last.fm updates continue in the background."
         : data.enrichment_pending ? "Album updates queued."
         : "Links are checked in small background batches. Use Refresh albums to see new matches.");
@@ -199,7 +209,7 @@ function renderGenres() {
     ? `Based on your ${context.period || context.weekday} listening around ${String(context.hour).padStart(2, "0")}:00 (±2 hours, ${context.timezone}). `
     : aroundNow && !contextual.length ? "Not enough listening history for this time yet; showing library tags. " : "";
   $("#genre-status").textContent = data.genres.length
-    ? contextNote + `Last.fm tags cover ${data.tagged_albums} of ${data.total_albums} albums. Counts describe your library, not the current filters.` +
+    ? contextNote + `Album details checked: ${data.metadata_checked ?? 0} of ${data.total_albums}. Last.fm tags cover ${data.tagged_albums} albums. Counts describe your library, not the current filters.` +
       (data.has_more ? ` Showing the top ${data.genres.length} of ${data.total_genres} tags.` : "")
     : "No genre tags yet. Metadata enrichment adds them gradually; you can also add tags when confirming an album.";
 }
@@ -550,6 +560,10 @@ $("#sync").addEventListener("click", async () => {
 });
 $("#enrich").addEventListener("click", async () => {
   try { await api("api/enrich", {method:"POST", body:"{}"}); message("Album updates queued. The remaining library continues in scheduled batches."); await status(); }
+  catch (error) { message(error.message, true); }
+});
+$("#update-tags").addEventListener("click", async () => {
+  try { await api("api/metadata", {method:"POST", body:"{}"}); message("Last.fm tag update queued."); await status(); }
   catch (error) { message(error.message, true); }
 });
 $("#refresh-albums").addEventListener("click", async () => {

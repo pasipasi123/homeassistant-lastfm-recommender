@@ -30,7 +30,7 @@ The app also works without Spotify catalogue credentials, but each album's Spoti
 - Supports `amd64` and `aarch64`, with its own container and `/data/scrobbles.db`.
 - Last.fm history and recommendations work without SpotifyPlus. Playback requires SpotifyPlus and Spotify Premium.
 - Spotify catalogue credentials are recommended for automatic album linking. Manual link entry is supported as a fallback.
-- History sync defaults to six hours; metadata and Spotify lookup batches run every five minutes.
+- History sync defaults to six hours. Last.fm tag batches process up to 50 albums with a one-minute pause; Spotify link batches remain at 10 albums with a five-minute pause. Their settings and retry deadlines are independent.
 - Four-digit year tags are displayed beside album names instead of in the genre cloud.
 - Ingress is the default interface. An optional port 8099 API requires a separate app token.
 - English interface and user documentation. No LLM or voice search in this release.

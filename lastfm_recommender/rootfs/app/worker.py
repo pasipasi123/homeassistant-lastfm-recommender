@@ -21,6 +21,15 @@ class Worker:
         self.phase = "idle"
         self.pending = True
         self.enrichment_pending = False
+        self.metadata_pending = False
+
+    def request_metadata(self):
+        with self.lock:
+            if self.running or self.pending or self.metadata_pending or not self.settings.lastfm_batch_size or self.lastfm_paused():
+                return False
+            self.metadata_pending = True
+            self.wake.set()
+            return True
 
     def request_enrichment(self):
         with self.lock:
@@ -57,9 +66,13 @@ class Worker:
                 self.db.finish_import(job["upper"])
                 return
 
-    def enrich(self):
+    def enrich(self, *, metadata=True, spotify=True):
         for method, error_key in ((self.enrich_metadata, "enrichment_error"),
                                   (self.enrich_spotify, "spotify_error")):
+            if error_key == "enrichment_error" and (not metadata or not self.settings.lastfm_batch_size or self.lastfm_paused()):
+                continue
+            if error_key == "spotify_error" and (not spotify or not self.settings.enrich_batch_size):
+                continue
             if error_key == "spotify_error" and self.spotify_paused():
                 continue
             self.db.set_state(error_key, None)
@@ -71,6 +84,9 @@ class Worker:
                     self.db.set_state(error_key, message, conn)
                     if error_key == "spotify_error" and isinstance(error, ServiceError) and error.retry_after is not None:
                         self.db.set_state("spotify_retry_at", int(time.time()) + error.retry_after + 1, conn)
+                    if error_key == "enrichment_error":
+                        delay = error.retry_after if isinstance(error, ServiceError) and error.retry_after is not None else 900
+                        self.db.set_state("lastfm_retry_at", int(time.time()) + delay + 1, conn)
                 LOG.warning("Album update stopped (%s): %s", error_key, message)
                 if not isinstance(error, ServiceError):
                     # Keep values, source lines, URLs and credentials out of logs.
@@ -79,8 +95,11 @@ class Worker:
                         f"{Path(frame.filename).name}:{frame.lineno} ({frame.name})" for frame in frames[-3:]))
 
     def enrich_metadata(self):
+        if self.lastfm_paused() or not self.settings.lastfm_batch_size:
+            return
         self.db.set_state("enrichment_error", None)
-        for album in self.db.enrichment_queue(self.settings.enrich_batch_size):
+        self.db.set_state("lastfm_retry_at", None)
+        for album in self.db.enrichment_queue(self.settings.lastfm_batch_size):
             if self.stop.is_set():
                 return
             try:
@@ -91,6 +110,9 @@ class Worker:
                     raise
                 tags, image = [], None
             self.db.save_enrichment(album["id"], tags, image, None)
+
+    def lastfm_paused(self):
+        return (self.db.get_state("lastfm_retry_at") or 0) > time.time()
 
     def spotify_paused(self):
         return (self.db.get_state("spotify_retry_at") or 0) > time.time()
@@ -106,20 +128,29 @@ class Worker:
             self.db.save_spotify_match(album["id"], candidate, self.settings.spotify_market)
 
     def run(self):
-        next_sync, next_enrichment = 0, 0
+        next_sync, next_enrichment, next_metadata = 0, 0, 0
         while not self.stop.is_set():
             now = time.monotonic()
             with self.lock:
                 sync_due = self.pending or now >= next_sync
                 enrichment_due = self.settings.enrich_batch_size > 0 and (
                     self.enrichment_pending or now >= next_enrichment)
+                metadata_due = self.settings.lastfm_batch_size > 0 and (
+                    self.metadata_pending or now >= next_metadata)
+                if metadata_due:
+                    self.metadata_pending = False
                 if enrichment_due:
                     self.enrichment_pending = False
                 if sync_due:
                     self.pending = False
-                self.running = sync_due or enrichment_due
+                self.running = sync_due or enrichment_due or metadata_due
             if not self.running:
-                deadline = min(next_sync, next_enrichment) if self.settings.enrich_batch_size else next_sync
+                deadlines = [next_sync]
+                if self.settings.enrich_batch_size:
+                    deadlines.append(next_enrichment)
+                if self.settings.lastfm_batch_size:
+                    deadlines.append(next_metadata)
+                deadline = min(deadlines)
                 self.wake.wait(max(0, deadline - now))
                 self.wake.clear()
                 continue
@@ -134,16 +165,19 @@ class Worker:
                         LOG.warning("Sync stopped: %s", message)
                     finally:
                         next_sync = time.monotonic() + self.settings.sync_interval_minutes * 60
-                if not self.stop.is_set() and self.settings.enrich_batch_size and (sync_due or enrichment_due):
+                if not self.stop.is_set() and (enrichment_due or metadata_due):
                     self.phase = "enrichment"
                     try:
-                        self.enrich()
+                        self.enrich(metadata=metadata_due, spotify=enrichment_due)
                     except Exception as error:
                         message = str(error) if isinstance(error, ServiceError) else type(error).__name__
                         self.db.set_state("enrichment_error", message)
                         LOG.warning("Enrichment stopped: %s", message)
                     finally:
-                        next_enrichment = time.monotonic() + self.settings.enrich_interval_minutes * 60
+                        if enrichment_due:
+                            next_enrichment = time.monotonic() + self.settings.enrich_interval_minutes * 60
+                        if metadata_due:
+                            next_metadata = time.monotonic() + self.settings.lastfm_interval_minutes * 60
             finally:
                 with self.lock:
                     self.running = False

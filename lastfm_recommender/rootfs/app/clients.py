@@ -50,6 +50,8 @@ def request_json(url, *, data=None, headers=None, stop=None):
                 payload = json.load(response)
             if "error" in payload:
                 code = payload["error"]
+                if code == 29:
+                    raise ServiceError("Last.fm request limit reached; album details paused temporarily", code=29, retry_after=900)
                 if code not in (11, 16, 29):
                     safe_code = code if isinstance(code, (int, str)) else "unknown"
                     raise ServiceError(f"API rejected request (code {safe_code}); check app credentials and permissions", code=code)

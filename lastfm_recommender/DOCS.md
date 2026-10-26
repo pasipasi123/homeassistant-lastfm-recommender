@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.1.5 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.2 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -21,6 +21,8 @@ timezone: "Europe/Helsinki"
 sync_interval_minutes: 360
 enrich_batch_size: 10
 enrich_interval_minutes: 5
+lastfm_batch_size: 50
+lastfm_interval_minutes: 1
 spotify_client_id: ""
 spotify_client_secret: ""
 spotify_market: "FI"
@@ -34,8 +36,10 @@ volume_decimals: 1
 - **`api_token`**: optional, not used for Ingress login. Leave empty for Ingress-only use. For direct browser/REST access, generate a random secret of at least 32 characters and enable the optional port 8099 mapping in HA. Direct requests require `Authorization: Bearer TOKEN`. The listening database does not contain this token.
 - **`timezone`**: IANA timezone for local calendar fields and listening context. Listening timestamps stay in UTC. Changing it recalculates calendar fields at startup. UI text is English; dates use English formatting in the browser's timezone.
 - **`sync_interval_minutes`**: 5–1440 minutes; default 360 (six hours), measured after the previous history sync. Sync also runs on startup and can be requested manually.
-- **`enrich_batch_size`**: 0–100 albums per metadata batch and per separate Spotify lookup batch; default 10 each. Set 0 to disable both. Large libraries are enriched gradually.
-- **`enrich_interval_minutes`**: 1–1440 minutes; default 5. Metadata batches run between history updates and after a manual sync. The first batch follows the initial history sync. This does not redownload history.
+- **`enrich_batch_size`**: 0–100 albums per Spotify lookup batch; default 10. Set 0 to disable Spotify album searches. This no longer controls Last.fm tags.
+- **`enrich_interval_minutes`**: 1–1440 minutes; default 5, measured after a Spotify batch finishes. This does not control Last.fm tags.
+- **`lastfm_batch_size`**: 0–100 albums per Last.fm metadata batch; default 50. Set 0 to disable album tag/image updates without disabling history sync or Spotify lookup.
+- **`lastfm_interval_minutes`**: 1–1440 minutes; default 1, measured after a metadata batch finishes. Requests are sequential with the existing 0.5-second pause before each Last.fm call. A single worker runs history, tag and Spotify jobs on separate schedules, so a long history sync or service request may delay other jobs. Faster tag settings never schedule extra Spotify searches.
 - **Spotify Client ID/Secret**: optional; set both or leave both empty. They enable background catalogue matching using Client Credentials authentication. Unique exact matches are linked automatically; uncertain results need confirmation. API restrictions may prevent useful results; manually pasted album links work independently. Restart the app after changing credentials.
 - **`spotify_market`**: two-letter uppercase country code, default `FI`. Set this to your Spotify account country. Client Credentials tokens have no user country, so searches specify the market explicitly. Changing it requeues unresolved albums after a restart.
 - **`volume_min` / `volume_max`**: display bounds, default 0.0–100.0. The reported HA level 0–1 maps linearly to this range. For a device with a 0–80 scale, set 0 and 80. Negative scales are supported when that linear mapping matches your device. These settings change display units, not the receiver's physical volume limits.
@@ -93,7 +97,9 @@ A forgotten favorite meets the minimum scrobble count and last-listened age cuto
 
 ## Find and confirm Spotify links
 
-With Spotify catalogue credentials configured, a separate queue finds URIs for unlinked albums, including albums whose Last.fm metadata was already fetched. Each cycle processes up to `enrich_batch_size` albums in each queue. The default is 10 Spotify lookups every five minutes (up to 120 albums/hour while there is work). API limits, history import and network delays can slow this down. **Find Spotify links** requests the next batch when idle; scheduled batches continue the remaining library. **Refresh albums** reloads the results without replacing forms while you edit.
+With Spotify catalogue credentials configured, a separate queue finds URIs for unlinked albums, including albums whose Last.fm metadata was already fetched. Each Spotify cycle processes up to `enrich_batch_size` albums. The default remains 10 Spotify lookups with five-minute pauses (up to 120 albums/hour before request time). API limits, history import and network delays can slow this down. **Find Spotify links** requests only the next Spotify batch when idle. **Settings → Update Last.fm tags** separately requests a metadata batch. Scheduled batches continue the remaining library. **Refresh albums** reloads the results without replacing forms while you edit.
+
+Last.fm metadata defaults to 50 albums per batch with a one-minute pause after completion. The queue checks never-processed albums first, ordered by listening count, then refreshes metadata older than 30 days. Empty metadata and unknown albums count as checked; they are not requested again on every cycle. **Settings → Library status** and the genre cloud distinguish checked albums from albums with tags. Some albums never receive tags because Last.fm has none for them. Metadata failures pause this queue for 15 minutes, or honor HTTP Retry-After when provided. The saved deadline survives app restarts and manual requests cannot bypass it. Spotify continues on its own schedule during a Last.fm metadata pause, and vice versa.
 
 Search examines up to 30 results in pages of 10. Automatic linking requires exactly one distinct URI with an exact artist and album name match, an unrestricted result, and a complete result set. Case, Unicode compatibility and whitespace are normalized; edition suffixes and punctuation are preserved. Multiple artists, multiple exact editions, approximate matches and searches with more results are left for review. A name match cannot prove edition identity or guarantee playback availability.
 
@@ -132,7 +138,8 @@ Direct HTTP is unencrypted. Use a trusted local network or your own HTTPS revers
 | `POST /api/play` | Request a confirmed album with `{"album_id":1,"spotify_uri":"spotify:album:..."}` |
 | `POST /api/player/control` | `{"action":"pause"}`, `resume`, `next` or `{"action":"volume","volume":0.2}` |
 | `POST /api/sync` | Queue history sync; 202 accepted, 409 busy/queued |
-| `POST /api/enrich` | Queue next metadata/Spotify batch; 202 accepted, 409 busy/queued/disabled |
+| `POST /api/enrich` | Queue next Spotify batch; 202 accepted, 409 busy/queued/disabled |
+| `POST /api/metadata` | Queue next Last.fm tag batch; 202 accepted, 409 busy/queued/disabled/paused |
 | `POST /api/sync/reset` | Reset interrupted pagination and queue sync; preserves history |
 | `GET /api/backup` | Download a consistent SQLite backup |
 

@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.3.1.5** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.3.2** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -46,7 +46,9 @@ Within the current period it uses hours within ±2 hours of the current local ho
 
 If there is not enough evidence, it falls back to library tags. **All genres**, **Filter genres** and **Show more genres** expose other choices. The API returns up to 500 tags per ordering. No genre is prohibited, and the time weighting does not silently restrict album recommendations to a time window.
 
-Counts describe all tagged albums, including unconfirmed ones, rather than albums eligible for the current recommendation filters. Tags overlap and can include moods or other community labels. Enrichment gradually adds tags in small batches; the history sync interval remains six hours by default.
+Counts describe all tagged albums, including unconfirmed ones, rather than albums eligible for the current recommendation filters. Tags overlap and can include moods or other community labels. The genre cloud also shows how many albums have been checked, including albums for which Last.fm returned no tags. Settings shows both counters and offers **Update Last.fm tags** to request the next tag batch.
+
+Tag lookup has its own settings: `lastfm_batch_size` defaults to 50 albums and `lastfm_interval_minutes` to a one-minute pause after a batch finishes. Requests remain sequential with a 0.5-second pause before each Last.fm call. Existing album metadata is reused and refreshed after 30 days, with never-checked albums first. These options do not increase Spotify searches. Set `lastfm_batch_size: 0` to disable tag updates; history sync remains separate at six hours by default. Temporary tag lookup failures pause metadata updates for 15 minutes (or the server's Retry-After deadline), including across restarts.
 
 Four-digit year tags are moved to album metadata and displayed beside album names, rather than as genre buttons. Conflicting years remain unknown; decade tags such as `2000s` stay in the cloud.
 

@@ -16,6 +16,8 @@ class Settings:
     sync_interval_minutes: int = 360
     enrich_batch_size: int = 10
     enrich_interval_minutes: int = 5
+    lastfm_batch_size: int = 50
+    lastfm_interval_minutes: int = 1
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
     spotify_market: str = "FI"
@@ -45,6 +47,10 @@ class Settings:
             raise ValueError("enrich_batch_size must be between 0 and 100")
         if not 1 <= settings.enrich_interval_minutes <= 1440:
             raise ValueError("enrich_interval_minutes must be between 1 and 1440")
+        for name, minimum, maximum in (("lastfm_batch_size", 0, 100), ("lastfm_interval_minutes", 1, 1440)):
+            value = getattr(settings, name)
+            if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+                raise ValueError(f"{name} must be an integer between {minimum} and {maximum}")
         if bool(settings.spotify_client_id) != bool(settings.spotify_client_secret):
             raise ValueError("Set both Spotify credentials, or leave both empty")
         if not re.fullmatch(r"[A-Z]{2}", settings.spotify_market):

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2
+
+- Give Last.fm tags their own batch size and schedule: up to 50 albums per batch with a one-minute pause by default, retaining sequential rate-limited requests. Spotify stays at its existing batch size and interval.
+- Add separate Last.fm tag update requests and show checked-album progress separately from tag coverage. Empty results are cached and existing metadata is preserved.
+- Persist Last.fm metadata retry deadlines across restarts and manual requests. Pause temporary failures for 15 minutes and honor HTTP Retry-After; Spotify can continue independently.
+- Existing `enrich_batch_size` and `enrich_interval_minutes` now control Spotify only. New `lastfm_batch_size` and `lastfm_interval_minutes` control album tags and images; history sync is unchanged.
+
 ## 0.3.1.5
 
 - Replace the full Discover device form with a compact, expandable destination beside each album's Play button.

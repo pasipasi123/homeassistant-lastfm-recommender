@@ -169,7 +169,8 @@ class SpotifyQueueTests(DatabaseCase):
         lastfm.album.side_effect = None
         lastfm.album.return_value = (["folk"], None)
         spotify.search_album.side_effect = ServiceError("Spotify unavailable")
-        worker.enrich()
+        with patch("worker.time.time", return_value=self.db.get_state("lastfm_retry_at") + 1):
+            worker.enrich()
         self.assertEqual(len(self.db.spotify_queue(10, "FI")), 1)
         self.assertEqual(self.db.get_state("spotify_error"), "Spotify unavailable")
         self.assertEqual(self.db.albums(query="Other")[0]["tags"], ["folk"])
