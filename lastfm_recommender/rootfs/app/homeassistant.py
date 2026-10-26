@@ -113,7 +113,10 @@ class HomeAssistant:
                         "volume": "player_set_volume_level", "volume_up": "player_set_volume_level", "volume_down": "player_set_volume_level"}
             data["device_id"] = device_id
             if "volume_level" in data:
-                data["volume_level"] = round(data["volume_level"] * 100, 6)
+                # Spotify's volume_percent query parameter must be an integer.
+                # A float such as 31.0 survives SpotifyPlus validation and is
+                # forwarded as "31.0", which Spotify rejects with HTTP 400.
+                data["volume_level"] = int(data["volume_level"] * 100 + 0.5)
             self._request("/services/spotifyplus/" + targeted[action], data)
         else:
             self._request("/services/media_player/" + services[action], data)

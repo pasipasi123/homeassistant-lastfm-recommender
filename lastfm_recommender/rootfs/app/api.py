@@ -138,7 +138,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
 
             if path == "/api/status" and method == "GET":
                 self.send_json(200, {**db.status(), "running": worker.running,
-                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.1.3",
+                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.1.4",
                                      "spotify_configured": bool(worker.settings.spotify_client_id),
                                      "spotify_market": worker.settings.spotify_market,
                                      "enrichment_enabled": worker.settings.enrich_batch_size > 0,

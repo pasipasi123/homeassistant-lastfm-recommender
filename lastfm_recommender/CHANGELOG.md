@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1.4
+
+- Fix device-targeted volume commands sending decimal percentages such as `31.0`, which Spotify rejects. Commands now send integer percentages while retaining the saved device destination and immediate local button feedback.
+
 ## 0.3.1.3
 
 - Choose and save a Spotify Connect device directly in Discover. Album playback explicitly targets that device, even when Spotify was last used elsewhere.

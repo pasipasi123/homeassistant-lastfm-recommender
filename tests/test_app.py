@@ -456,6 +456,19 @@ class HomeAssistantTests(unittest.TestCase):
             client.control(PLAYER, "volume_up", device_id="Living room")
             request.assert_called_once_with("/services/spotifyplus/player_set_volume_level",
                                             {"entity_id": PLAYER, "device_id": "Living room", "volume_level": 33})
+            self.assertIs(type(request.call_args.args[1]["volume_level"]), int)
+
+    def test_targeted_volume_is_an_integer_after_json_encoding(self):
+        client = HomeAssistant("secret")
+        player = {"devices": ["Living room"], "source": "Living room"}
+        for value, expected in ((0.31, 31), (0.325, 33), (0, 0), (1, 100)):
+            with self.subTest(value=value), patch.object(client, "validate_player", return_value=player), \
+                 patch("homeassistant.urlopen", return_value=io.BytesIO(b"[]")) as request:
+                client.control(PLAYER, "volume", value, device_id="Living room")
+                payload = json.loads(request.call_args.args[0].data)
+                self.assertEqual(payload["volume_level"], expected)
+                self.assertIs(type(payload["volume_level"]), int)
+                self.assertEqual(payload["device_id"], "Living room")
 
     def test_timeout_is_not_retried_and_secrets_are_not_reported(self):
         client = HomeAssistant("supervisor-secret")
