@@ -138,7 +138,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
 
             if path == "/api/status" and method == "GET":
                 self.send_json(200, {**db.status(), "running": worker.running,
-                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.3",
+                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.4",
                                      "spotify_configured": bool(worker.settings.spotify_client_id),
                                      "spotify_market": worker.settings.spotify_market,
                                      "enrichment_enabled": worker.settings.enrich_batch_size > 0,
@@ -238,7 +238,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                     raise ValueError("Invalid filter")
                 album = db.recommend(
                     integer(param("min_years_unheard", 3), "min_years_unheard", 0, 100),
-                    integer(param("min_total_scrobbles", 10), "min_total_scrobbles", 1, 10000000),
+                    integer(param("min_total_scrobbles", 20), "min_total_scrobbles", 1, 10000000),
                     genre, playable == "true")
                 self.send_json(200, {"album": album})
             elif path == "/api/sync" and method == "POST":
@@ -265,6 +265,15 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                 home_assistant.validate_player(entity_id)
                 worker.home_assistant = home_assistant
                 accepted = worker.request_library(entity_id)
+                self.send_json(202 if accepted else 409, {"accepted": accepted})
+            elif path == "/api/spotify-artists" and method == "POST":
+                self.body()
+                if not home_assistant or not home_assistant.available:
+                    raise HomeAssistantError("Artist lookup is available on Home Assistant OS with SpotifyPlus.")
+                entity_id = self.selected_player()
+                home_assistant.validate_player(entity_id)
+                worker.home_assistant = home_assistant
+                accepted = worker.request_artists(entity_id)
                 self.send_json(202 if accepted else 409, {"accepted": accepted})
             elif path.startswith("/api/albums/") and method == "POST":
                 album_id = integer(path.removeprefix("/api/albums/"), "album id", 1, 2**63-1)

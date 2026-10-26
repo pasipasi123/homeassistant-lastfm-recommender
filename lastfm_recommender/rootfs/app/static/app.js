@@ -10,6 +10,7 @@ let defaultDevice = null;
 let temporaryDevice = null;
 let availableDevices = [];
 let libraryActionBlocked = true;
+let artistActionBlocked = true;
 let deviceDraft = null;
 let deviceSaving = false;
 let controlReady = false;
@@ -149,11 +150,23 @@ async function status() {
   const progress = data.import ? ` Import page ${data.import.page}/${data.import.total_pages || "?"}.` : "";
   $("#status").textContent = `${data.scrobbles.toLocaleString("en-GB")} scrobbles · ${data.albums} albums · ` +
     `${data.confirmed_albums} confirmed Spotify links. Last successful sync: ${date(data.last_sync_at)}. ` +
-    `${data.phase === "spotify_library" ? "Importing saved Spotify albums." : data.phase === "enrichment" ? "Updating album metadata." : data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
+    `${data.phase === "spotify_artists" ? "Looking up artists' albums." : data.phase === "spotify_library" ? "Importing saved Spotify albums." : data.phase === "enrichment" ? "Updating album metadata." : data.running ? "Sync in progress." : data.pending ? "Sync queued." : "Waiting for the next sync."}${progress}`;
   $("#sync").disabled = data.running || data.pending;
   const library = data.spotify_library_import;
+  const artistJob = data.spotify_artist_import;
+  const artistPaused = artistJob?.retry_at && artistJob.retry_at * 1000 > Date.now();
+  const artistBusy = ["queued", "running"].includes(artistJob?.status);
   const libraryPaused = library?.retry_at && library.retry_at * 1000 > Date.now();
-  libraryActionBlocked = data.running || data.pending || ["queued", "running"].includes(library?.status) || libraryPaused;
+  const importBusy = data.running || data.pending || ["queued", "running"].includes(library?.status) || artistBusy;
+  libraryActionBlocked = importBusy || libraryPaused;
+  artistActionBlocked = importBusy || artistPaused;
+  $("#import-spotify-artists").disabled = !playbackAvailable || !selectedPlayer || artistActionBlocked;
+  $("#spotify-artist-status").textContent = !artistJob ? "Uses known artist identities from confirmed albums. Artists are checked at most once every 30 days."
+    : artistJob.status === "queued" ? "Artist lookup queued."
+    : artistJob.status === "running" ? `Checked ${artistJob.artists} of ${artistJob.selected ?? 5} artists; ${artistJob.requests} Spotify requests so far.`
+    : artistJob.status === "complete" ? `${artistJob.artists} artists checked using ${artistJob.requests} Spotify requests. ${artistJob.linked} albums linked; ${artistJob.review} need review. ${artistJob.truncated} release lists reached the limit or were incomplete.`
+    : artistJob.status === "interrupted" ? "Artist lookup was interrupted. Completed artists were kept; start another batch to continue."
+    : `${artistJob.error || "Artist lookup failed."}${artistPaused ? ` Try again after ${resumeTime(artistJob.retry_at)}.` : ""}`;
   $("#import-spotify-library").disabled = !playbackAvailable || !selectedPlayer || libraryActionBlocked;
   $("#spotify-library-status").textContent = !library ? "Import your saved albums to find links without searching for each album separately."
     : library.status === "complete" ? `Read ${library.fetched} saved albums. ${library.linked} Last.fm albums linked; ${library.review} need edition review. Existing confirmed links were kept.`
@@ -262,6 +275,7 @@ function albumCard(album, editable = true) {
     link.target = "_blank"; link.rel = "noopener noreferrer";
     if (album.spotify_match_source === "automatic") element("p", "Automatically linked: unique exact artist and album name match. You can change the edition below.", content);
     if (album.spotify_match_source === "saved_library") element("p", "Linked from your saved Spotify albums: exact artist and album name match. You can change the edition below.", content);
+    if (album.spotify_match_source === "artist_catalog") element("p", "Linked from a complete artist release list: exact artist and album name match. You can change the edition below.", content);
   }
   if (playbackAvailable) {
     const playback = element("div", undefined, content); playback.className = "album-playback";
@@ -459,6 +473,7 @@ async function loadPlayers() {
     if (selectedPlayer !== data.selected_entity || selectedDevice !== effectiveDevice) resetVolume();
     selectedPlayer = data.selected_entity;
     $("#import-spotify-library").disabled = !selectedPlayer || libraryActionBlocked;
+    $("#import-spotify-artists").disabled = !selectedPlayer || artistActionBlocked;
     selectedDevice = effectiveDevice;
     const select = $("#player-select"); select.replaceChildren();
     const placeholder = element("option", "Select a SpotifyPlus player", select); placeholder.value = "";
@@ -513,6 +528,11 @@ $("#refresh-players").addEventListener("click", loadPlayers);
 $("#import-spotify-library").addEventListener("click", async () => {
   $("#import-spotify-library").disabled = true;
   try { await api("api/spotify-library", {method:"POST", body:"{}"}); message("Saved Spotify album import queued."); await status(); }
+  catch (error) { message(error.message, true); await status(); }
+});
+$("#import-spotify-artists").addEventListener("click", async () => {
+  $("#import-spotify-artists").disabled = true;
+  try { await api("api/spotify-artists", {method:"POST", body:"{}"}); message("Artist lookup queued."); await status(); }
   catch (error) { message(error.message, true); await status(); }
 });
 $("#refresh-devices").addEventListener("click", loadPlayers);
@@ -570,6 +590,7 @@ $("#logout").addEventListener("click", () => {
   $("#player-select").replaceChildren(); selectedPlayer = null; playerDraft = null;
   playerReady = false; controlReady = false; selectedDevice = null; defaultDevice = null; temporaryDevice = null; availableDevices = []; deviceDraft = null;
   libraryActionBlocked = true; $("#import-spotify-library").disabled = true; $("#spotify-library-status").textContent = "Connect to import saved albums.";
+  artistActionBlocked = true; $("#import-spotify-artists").disabled = true; $("#spotify-artist-status").textContent = "Connect to look up artists.";
   $("#device-select").replaceChildren(); $("#device-status").textContent = "Connect to choose a device.";
   playerVolume = null; $("#volume-value").textContent = "—"; updatePlaybackButtons();
 });

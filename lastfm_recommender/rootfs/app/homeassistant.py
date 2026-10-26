@@ -6,7 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from database import spotify_uri
+from database import normalized, spotify_uri
 
 
 class HomeAssistantError(Exception):
@@ -88,15 +88,38 @@ class HomeAssistant:
         response = self._request("/services/spotifyplus/get_album_favorites?return_response",
                                  {"entity_id": entity_id, "limit": 50, "offset": offset, "sort_result": False})
         data = response.get("service_response", {}).get("result", {}) if isinstance(response, dict) else {}
+        return self._album_page(data, offset, 50, wrapped=True)
+
+    def artist_id_for_album(self, entity_id, album_uri, artist_name):
+        album_id = spotify_uri(album_uri).split(":")[-1]
+        response = self._request("/services/spotifyplus/get_album?return_response",
+                                 {"entity_id": entity_id, "album_id": album_id})
+        album = response.get("service_response", {}).get("result", {})
+        matches = {a["id"] for a in album.get("artists", []) if isinstance(a, dict)
+                   and isinstance(a.get("name"), str) and normalized(a["name"]) == normalized(artist_name)
+                   and isinstance(a.get("id"), str) and re.fullmatch(r"[A-Za-z0-9]{22}", a["id"])}
+        return next(iter(matches)) if len(matches) == 1 else None
+
+    def artist_albums(self, entity_id, artist_id, market, offset=0):
+        if not re.fullmatch(r"[A-Za-z0-9]{22}", artist_id):
+            raise ValueError("Invalid artist ID")
+        response = self._request("/services/spotifyplus/get_artist_albums?return_response",
+                                 {"entity_id": entity_id, "artist_id": artist_id, "market": market,
+                                  "include_groups": "album,single,compilation", "limit": 10,
+                                  "offset": offset, "sort_result": False})
+        return self._album_page(response.get("service_response", {}).get("result", {}), offset, 10, wrapped=False)
+
+    @staticmethod
+    def _album_page(data, offset, limit, *, wrapped):
         items, total = data.get("items"), data.get("total")
-        if (not isinstance(items, list) or len(items) > 50 or isinstance(total, bool) or
+        if (not isinstance(items, list) or len(items) > limit or isinstance(total, bool) or
                 not isinstance(total, int) or total < 0 or data.get("offset") != offset):
-            raise HomeAssistantError("SpotifyPlus returned an invalid saved-album page. Import stopped without changing links.")
+            raise HomeAssistantError("SpotifyPlus returned an invalid album page. Lookup stopped safely.")
         albums = []
         for item in items:
-            album = item.get("album") if isinstance(item, dict) else None
+            album = item.get("album") if wrapped and isinstance(item, dict) else item
             if not isinstance(album, dict):
-                raise HomeAssistantError("SpotifyPlus returned an incomplete saved album. Import stopped without changing links.")
+                raise HomeAssistantError("SpotifyPlus returned an incomplete album. Lookup stopped safely.")
             try:
                 uri = spotify_uri(album.get("uri", ""))
                 name = album["name"]
@@ -104,7 +127,7 @@ class HomeAssistant:
                 if not isinstance(name, str) or not name.strip() or not artists or any(not isinstance(a, str) or not a.strip() for a in artists):
                     raise ValueError
             except (ValueError, TypeError, KeyError, AttributeError):
-                raise HomeAssistantError("SpotifyPlus returned invalid album identifiers. Import stopped without changing links.") from None
+                raise HomeAssistantError("SpotifyPlus returned invalid album identifiers. Lookup stopped safely.") from None
             albums.append({"uri": uri, "name": name, "artists": artists, "release_date": album.get("release_date", ""),
                            "total_tracks": album.get("total_tracks"), "restricted": bool(album.get("restrictions")),
                            "exact": True})

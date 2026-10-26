@@ -25,6 +25,10 @@ class Worker:
         self.metadata_pending = False
         self.home_assistant = None
         self.library_pending = False
+        self.artist_pending = False
+        previous_artists = self.db.get_state("spotify_artist_import")
+        if previous_artists and previous_artists.get("status") in ("queued", "running"):
+            self.db.set_state("spotify_artist_import", {**previous_artists, "status": "interrupted"})
         previous_library = self.db.get_state("spotify_library_import")
         if previous_library and previous_library.get("status") in ("queued", "running"):
             self.db.set_state("spotify_library_import", {**previous_library, "status": "interrupted"})
@@ -32,7 +36,7 @@ class Worker:
     def request_library(self, entity_id):
         with self.lock:
             previous = self.db.get_state("spotify_library_import") or {}
-            if (self.running or self.pending or self.library_pending or not self.home_assistant or
+            if (self.running or self.pending or self.library_pending or self.artist_pending or not self.home_assistant or
                     not self.home_assistant.available or (previous.get("retry_at") or 0) > time.time()):
                 return False
             self.db.set_state("spotify_library_import", {"status": "queued", "entity_id": entity_id,
@@ -40,6 +44,72 @@ class Worker:
             self.library_pending = True
             self.wake.set()
             return True
+
+    def request_artists(self, entity_id):
+        with self.lock:
+            previous = self.db.get_state("spotify_artist_import") or {}
+            if (self.running or self.pending or self.library_pending or self.artist_pending or not self.home_assistant or
+                    not self.home_assistant.available or (previous.get("retry_at") or 0) > time.time()):
+                return False
+            self.db.set_state("spotify_artist_import", {"status": "queued", "entity_id": entity_id,
+                              "artists": 0, "requests": 0, "linked": 0, "review": 0, "truncated": 0})
+            self.artist_pending = True
+            self.wake.set()
+            return True
+
+    def import_artists(self):
+        job = self.db.get_state("spotify_artist_import")
+        entity_id = job["entity_id"]
+        try:
+            self.home_assistant.validate_player(entity_id)
+            queue = self.db.artist_queue(entity_id)
+            job = {**job, "status": "running", "selected": len(queue)}
+            self.db.set_state("spotify_artist_import", job)
+            for artist in queue:
+                albums, total, offset, complete = [], None, 0, False
+                if self.stop.is_set():
+                    self.db.set_state("spotify_artist_import", {**job, "status": "interrupted"})
+                    return
+                if self.db.get_state("spotifyplus_entity") != entity_id:
+                    raise HomeAssistantError("SpotifyPlus account changed. Start a new artist batch for the selected account.")
+                artist_id = artist["artist_id"]
+                if not artist_id:
+                    job["requests"] += 1
+                    artist_id = self.home_assistant.artist_id_for_album(entity_id, artist["reference_uri"], artist["artist"])
+                if artist_id:
+                    for _page in range(3):
+                        if self.stop.wait(0.5):
+                            self.db.set_state("spotify_artist_import", {**job, "status": "interrupted"})
+                            return
+                        job["requests"] += 1
+                        page = self.home_assistant.artist_albums(entity_id, artist_id, self.settings.spotify_market, offset)
+                        if total is not None and total != page["total"]:
+                            raise HomeAssistantError("An artist's release list changed during lookup. Try again later.")
+                        total = page["total"]
+                        albums.extend(page["albums"])
+                        offset += page["count"]
+                        if len({album["uri"] for album in albums}) != len(albums):
+                            raise HomeAssistantError("Duplicate releases appeared during paging. Artist lookup stopped safely.")
+                        complete = offset == total and not page["has_more"]
+                        if complete or not page["has_more"] or not page["count"]:
+                            break
+                    if self.stop.is_set():
+                        self.db.set_state("spotify_artist_import", {**job, "status": "interrupted"})
+                        return
+                    result = self.db.match_saved_albums(albums, entity_id, source="artist_catalog", complete=complete,
+                                                       artist_search=artist["artist_search"])
+                    job["linked"] += result["linked"]
+                    job["review"] += result["review"]
+                    job["truncated"] += int(not complete)
+                self.db.mark_artist_checked(entity_id, artist["artist_search"], artist_id)
+                job["artists"] += 1
+                self.db.set_state("spotify_artist_import", job)
+            self.db.set_state("spotify_artist_import", {**job, "status": "complete", "finished_at": int(time.time())})
+        except Exception as error:
+            message = str(error) if isinstance(error, HomeAssistantError) else "Artist lookup stopped. Earlier completed artists were kept; try again later."
+            self.db.set_state("spotify_artist_import", {**job, "status": "error", "error": message,
+                              "retry_at": int(time.time()) + 900})
+            LOG.warning("Spotify artist lookup stopped (%s)", type(error).__name__)
 
     def import_library(self):
         job = self.db.get_state("spotify_library_import")
@@ -197,6 +267,9 @@ class Worker:
             with self.lock:
                 sync_due = self.pending or now >= next_sync
                 library_due = self.library_pending
+                artist_due = self.artist_pending
+                if artist_due:
+                    self.artist_pending = False
                 if library_due:
                     self.library_pending = False
                 enrichment_due = self.settings.enrich_batch_size > 0 and (
@@ -209,7 +282,7 @@ class Worker:
                     self.enrichment_pending = False
                 if sync_due:
                     self.pending = False
-                self.running = sync_due or enrichment_due or metadata_due or library_due
+                self.running = sync_due or enrichment_due or metadata_due or library_due or artist_due
             if not self.running:
                 deadlines = [next_sync]
                 if self.settings.enrich_batch_size:
@@ -224,6 +297,9 @@ class Worker:
                 if library_due:
                     self.phase = "spotify_library"
                     self.import_library()
+                if artist_due:
+                    self.phase = "spotify_artists"
+                    self.import_artists()
                 if sync_due:
                     self.phase = "sync"
                     try:

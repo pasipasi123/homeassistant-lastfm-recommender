@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.3.3** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.3.4** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -17,6 +17,8 @@ Your existing Last.fm username, API key, history, tags and confirmed Spotify lin
 Home Assistant handles login for the Music page. Do not enter your Last.fm API key, Last.fm shared secret or an HA access token in the Music page. The app uses its Supervisor-provided Core API permission to call SpotifyPlus; that credential stays on the server.
 
 ## Daily use
+
+Discover starts at **20 scrobbles** per album. Scrobbles count track listening events, including repeated tracks, rather than complete album plays. You can change this recommendation filter.
 
 - **Discover**: choose a genre first, adjust the age/count filters, then select **Find a forgotten favorite**. Review Spotify matches and confirm the album link on the same card; there is no need to switch to Album library. **Check or change Spotify link** also lets you correct an already linked edition.
 - **Play this album**: start a confirmed album on the saved Spotify Connect device, even if Spotify was last used on another device.
@@ -53,6 +55,8 @@ Tag lookup has its own settings: `lastfm_batch_size` defaults to 50 albums and `
 Four-digit year tags are moved to album metadata and displayed beside album names, rather than as genre buttons. Conflicting years remain unknown; decade tags such as `2000s` stay in the cloud.
 
 ## Recommended: automatic Spotify links
+
+After importing saved albums, **Settings → Find links by artist** can check the remaining catalogue by artist. It considers artists with at least three unlinked albums of 20 scrobbles each, using a confirmed album to identify the artist. Each manual batch handles at most five artists and three pages per artist (at most 20 Spotify requests). Checked artists are skipped for 30 days; another batch moves on to others. Complete unique exact matches can link automatically. Partial release lists and ambiguous editions remain for review. Existing confirmed links are preserved and no playback is started.
 
 Start with **Settings → Import saved Spotify albums** if you save albums in Spotify. The app reads the selected SpotifyPlus account's library in pages of 50, then compares artist/title pairs locally with Last.fm albums. A single exact matching edition is linked automatically; ambiguous or restricted editions are left for review. Already confirmed links are kept. This uses SpotifyPlus's existing login, does not require catalogue credentials, and never starts playback or changes your Spotify library. The result reports how many albums were read, linked and left for review. Albums you listened to but never saved in Spotify still need the searches below or manual links.
 

@@ -260,6 +260,16 @@ class ApiTests(DatabaseCase):
         self.ha.play.assert_not_called()
         self.ha.control.assert_not_called()
 
+    def test_artist_lookup_requires_auth_account_and_does_not_start_other_jobs(self):
+        self.assertEqual(self.request("/api/spotify-artists", "POST", {}, token="")[0], 401)
+        self.assertEqual(self.request("/api/spotify-artists", "POST", {})[0], 503)
+        self.db.set_state("spotifyplus_entity", PLAYER)
+        self.assertEqual(self.request("/api/spotify-artists", "POST", {})[0], 202)
+        self.assertEqual(self.request("/api/spotify-artists", "POST", {})[0], 409)
+        self.assertFalse(self.worker.enrichment_pending)
+        self.assertFalse(self.worker.library_pending)
+        self.ha.play.assert_not_called()
+
     def test_spoofed_ingress_headers_do_not_bypass_direct_token(self):
         headers = {"X-Ingress-Path": "/api/hassio_ingress/fake", "X-Forwarded-For": "172.30.32.2",
                    "X-Remote-User-Id": "admin"}

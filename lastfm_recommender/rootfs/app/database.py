@@ -54,6 +54,10 @@ class Database:
             conn.executescript("""
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS spotify_artist_checks (
+                    entity_id TEXT NOT NULL, artist_search TEXT NOT NULL, checked_at INTEGER NOT NULL,
+                    artist_id TEXT, PRIMARY KEY(entity_id, artist_search)
+                );
                 CREATE TABLE IF NOT EXISTS albums (
                     id INTEGER PRIMARY KEY, artist TEXT NOT NULL, album TEXT NOT NULL,
                     artist_search TEXT NOT NULL, album_search TEXT NOT NULL,
@@ -207,7 +211,7 @@ class Database:
                     "spotify_candidates": conn.execute(
                         "SELECT COUNT(*) FROM albums WHERE spotify_status='candidate'").fetchone()[0],
                     **{key: self.get_state(key, conn) for key in
-                       ("last_sync_at", "last_error", "import", "enrichment_error", "lastfm_retry_at", "spotify_error", "spotify_retry_at", "spotify_library_import", "timezone")}}
+                       ("last_sync_at", "last_error", "import", "enrichment_error", "lastfm_retry_at", "spotify_error", "spotify_retry_at", "spotify_library_import", "spotify_artist_import", "timezone")}}
 
     @staticmethod
     def album_result(conn, row):
@@ -231,7 +235,7 @@ class Database:
         with self.connect() as conn:
             return self.album_result(conn, conn.execute("SELECT * FROM albums WHERE id=?", (album_id,)).fetchone())
 
-    def recommend(self, min_years=3, min_scrobbles=10, genre="", playable_only=True):
+    def recommend(self, min_years=3, min_scrobbles=20, genre="", playable_only=True):
         with self.connect() as conn:
             row = conn.execute("""SELECT a.* FROM albums a
                 WHERE last_listened_at < ? AND scrobbles_total >= ?
@@ -361,7 +365,26 @@ class Database:
             finally:
                 target.close()
 
-    def match_saved_albums(self, albums, entity_id):
+    def artist_queue(self, entity_id):
+        with self.connect() as conn:
+            return [dict(row) for row in conn.execute("""SELECT a.artist_search, MIN(a.artist) AS artist,
+                COUNT(*) AS missing_albums, SUM(a.scrobbles_total) AS listens,
+                (SELECT k.spotify_uri FROM albums k WHERE k.artist_search=a.artist_search
+                 AND k.spotify_status='confirmed' ORDER BY k.scrobbles_total DESC, k.id LIMIT 1) AS reference_uri,
+                c.artist_id FROM albums a LEFT JOIN spotify_artist_checks c
+                ON c.entity_id=? AND c.artist_search=a.artist_search
+                WHERE a.spotify_status != 'confirmed' AND a.scrobbles_total >= 20
+                AND (c.checked_at IS NULL OR c.checked_at < ?)
+                GROUP BY a.artist_search HAVING COUNT(*) >= 3 AND reference_uri IS NOT NULL
+                ORDER BY missing_albums DESC, listens DESC, a.artist_search LIMIT 5""",
+                (entity_id, int(time.time()) - 30 * 86400))]
+
+    def mark_artist_checked(self, entity_id, artist_search, artist_id):
+        with self.connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO spotify_artist_checks VALUES (?, ?, ?, ?)",
+                         (entity_id, artist_search, int(time.time()), artist_id))
+
+    def match_saved_albums(self, albums, entity_id, *, source="saved_library", complete=True, artist_search=None):
         """Match a complete library snapshot atomically; never replace confirmed links."""
         index = {}
         for album in albums:
@@ -372,19 +395,21 @@ class Database:
             conn.execute("BEGIN IMMEDIATE")
             if self.get_state("spotifyplus_entity", conn) != entity_id:
                 raise ValueError("SpotifyPlus account changed during import")
-            rows = conn.execute("SELECT id, artist, album FROM albums WHERE spotify_status != 'confirmed'").fetchall()
+            rows = conn.execute("""SELECT id, artist, album FROM albums WHERE spotify_status != 'confirmed'
+                AND (? IS NULL OR (artist_search=? AND scrobbles_total >= 20))""",
+                (artist_search, artist_search)).fetchall()
             for row in rows:
                 choices = list(index.get((normalized(row["artist"]), normalized(row["album"])), {}).values())
                 if not choices:
                     continue
-                automatic = len(choices) == 1 and not choices[0]["restricted"]
-                candidate = {**choices[0], "alternatives": choices, "complete": True,
+                automatic = complete and len(choices) == 1 and not choices[0]["restricted"]
+                candidate = {**choices[0], "alternatives": choices, "complete": complete,
                              "confidence": "saved_exact_unique" if automatic else "unverified",
-                             "source": "spotify_library"}
+                             "source": source}
                 conn.execute("""UPDATE albums SET spotify_candidate=?, spotify_uri=?, spotify_status=?,
                     spotify_match_source=? WHERE id=? AND spotify_status != 'confirmed'""",
                     (json.dumps(candidate), choices[0]["uri"] if automatic else None,
-                     "confirmed" if automatic else "candidate", "saved_library" if automatic else None, row["id"]))
+                     "confirmed" if automatic else "candidate", source if automatic else None, row["id"]))
                 linked += int(automatic)
                 review += int(not automatic)
         return {"linked": linked, "review": review}

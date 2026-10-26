@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4
+
+- Raise the default recommendation threshold to 20 track scrobbles per album.
+- Add a manual SpotifyPlus artist lookup: at least three unlinked albums of 20 scrobbles each, at most five artists and three pages per artist (20 Spotify requests maximum).
+- Identify artists from confirmed album links, skip checked artists for 30 days, and preserve confirmed links. Complete unique exact matches can link automatically; incomplete or ambiguous results need review.
+- Show artist batch progress, request counts and results. Persist interruption state and failure retry pauses; artist batches do not start playback or run automatically.
+
 ## 0.3.3
 
 - Import saved Spotify albums through the selected SpotifyPlus account in Settings, using pages of 50 and local matching instead of one catalogue search per album.

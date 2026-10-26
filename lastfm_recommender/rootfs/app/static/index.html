@@ -10,7 +10,7 @@
 </head>
 <body>
 <main>
-  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.3.3</p>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.3.4</p>
     <h1>Music</h1><p>Your listening history, rediscovered.</p></header>
   <nav aria-label="Music pages">
     <button id="nav-music" type="button" aria-pressed="true">Discover</button>
@@ -74,6 +74,10 @@
     <p>Match albums saved in your Spotify library to your Last.fm history through SpotifyPlus. Existing confirmed links are kept. This does not start playback.</p>
     <button id="import-spotify-library" type="button" class="secondary" disabled>Import saved Spotify albums</button>
     <p id="spotify-library-status" class="service-note"></p>
+    <h3>Artist album lookup</h3>
+    <p>Check up to 5 artists with at least 3 unlinked albums of 20 scrobbles each. Read at most 3 pages per artist; incomplete results need edition review.</p>
+    <button id="import-spotify-artists" type="button" class="secondary" disabled>Find links by artist</button>
+    <p id="spotify-artist-status" class="service-note"></p>
   </section>
   <section id="discovery-section" class="panel" aria-labelledby="recommend-heading">
     <h2 id="recommend-heading">Find an album</h2>
@@ -88,7 +92,7 @@
     <form id="recommend">
       <div class="filters">
         <label>Minimum years since last listen<input name="min_years_unheard" type="number" min="0" max="100" value="3" required></label>
-        <label>Minimum scrobbles<input name="min_total_scrobbles" type="number" min="1" max="10000000" value="10" required></label>
+        <label>Minimum scrobbles<input name="min_total_scrobbles" type="number" min="1" max="10000000" value="20" required></label>
         <label>Genre / tag<input name="genre" placeholder="e.g. indie folk" maxlength="100"></label>
       </div>
       <label class="check"><input name="playable_only" type="checkbox"> Only albums with confirmed Spotify links</label>

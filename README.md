@@ -25,6 +25,8 @@ These credentials are separate from your Last.fm API key and SpotifyPlus login. 
 
 For a shortcut, use **Music → Settings → Import saved Spotify albums**. This reads your saved Spotify albums through SpotifyPlus, 50 per page, and matches them locally to Last.fm history. No separate app login or catalogue credentials are needed for this import. Albums outside your saved library still need catalogue searches or manual links.
 
+**Find links by artist** provides another bounded shortcut: up to five artists per manual batch, three release pages per artist, and at most 20 Spotify requests. It focuses on artists with at least three unlinked albums of 20 scrobbles each. Discover also defaults to 20 scrobbles, counting individual track listening events rather than complete album plays.
+
 The app also works without Spotify catalogue credentials, but each album's Spotify link must then be pasted and confirmed manually under **Album library** before it can be played from Music. Manual links are also available when API access is restricted or an album cannot be matched.
 
 ## Scope

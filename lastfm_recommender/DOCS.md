@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.3 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.4 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -97,6 +97,12 @@ A forgotten favorite meets the minimum scrobble count and last-listened age cuto
 
 ## Find and confirm Spotify links
 
+**Settings → Find links by artist** runs one bounded artist batch through SpotifyPlus. Eligible artists have at least three unconfirmed albums with at least 20 track scrobbles per album and an already confirmed album link to establish identity. The batch chooses up to five artists, prioritizing missing album count and listening count. Artists without a confirmed reference are left for normal album searches.
+
+Each artist uses at most one `get_album` request to resolve an exact artist identity, then at most three `get_artist_albums` pages of ten releases, including albums, singles and compilations. The hard budget is 20 Spotify service requests per batch. Resolved identities are cached per SpotifyPlus account, and checked artists are skipped for 30 days so another manual batch advances to other artists. This lookup runs only on request; it does not run repeatedly in the background.
+
+Exact artist/title matches from a complete release list can be linked automatically. A partial list, multiple editions, or restrictions leave matches for review. Only eligible albums with at least 20 scrobbles are affected; confirmed links are preserved. Matching is committed per artist after that artist's pages have been read. If a later artist fails, earlier completed artists remain, the current artist is unchanged, and a 15-minute retry pause applies. Interrupted jobs do not restart automatically. Progress and linked/review counts are shown in Settings.
+
 **Settings → Import saved Spotify albums** reads the selected SpotifyPlus account's saved library using `spotifyplus.get_album_favorites`. Each request reads at most 50 albums with a short pause between pages. It uses the existing HA Core API connection and SpotifyPlus login, so no new OAuth login or catalogue credentials are needed. The import runs on the background worker and reports progress in Settings. It does not play music, save/remove Spotify albums, or add unheard albums to Last.fm history.
 
 Matching begins after the entire snapshot is read. Exact artist/title matches are compared locally without stripping edition suffixes. A unique unrestricted edition is linked; multiple exact editions or restricted editions become review candidates. Existing confirmed links are never replaced. Nonmatching albums remain on the regular catalogue lookup queue. Only the album metadata needed for matching is retained; the service's user profile and track lists are discarded.
@@ -147,6 +153,7 @@ Direct HTTP is unencrypted. Use a trusted local network or your own HTTPS revers
 | `POST /api/enrich` | Queue next Spotify batch; 202 accepted, 409 busy/queued/disabled |
 | `POST /api/metadata` | Queue next Last.fm tag batch; 202 accepted, 409 busy/queued/disabled/paused |
 | `POST /api/spotify-library` | Queue the selected SpotifyPlus account's saved-album import; 202 accepted, 409 busy/queued/paused |
+| `POST /api/spotify-artists` | Queue one bounded five-artist lookup batch; 202 accepted, 409 busy/queued/paused |
 | `POST /api/sync/reset` | Reset interrupted pagination and queue sync; preserves history |
 | `GET /api/backup` | Download a consistent SQLite backup |
 
@@ -154,7 +161,7 @@ Only `/health`, `/api/session` and static UI files are public on the direct list
 
 Playback and control requests can include `device_id` to target a temporary destination without changing the saved default. The device is validated against the selected account's source list. The UI includes `expected_entity` and `expected_device` guards with its requests.
 
-Recommendation parameters: `min_years_unheard` (0–100, default 3), `min_total_scrobbles` (1–10000000, default 10), `genre` (optional exact tag), `playable_only` (`true` by default). The UI also permits browsing unconfirmed recommendations. Omit `tags` in confirmation to preserve tags; `[]` removes them. Later enrichment may add tags again.
+Recommendation parameters: `min_years_unheard` (0–100, default 3), `min_total_scrobbles` (1–10000000, default 20), `genre` (optional exact tag), `playable_only` (`true` by default). Scrobbles count individual track listening events on an album, not complete album plays. The recommendation threshold remains editable in Discover. The UI also permits browsing unconfirmed recommendations. Omit `tags` in confirmation to preserve tags; `[]` removes them. Later enrichment may add tags again.
 
 Playback endpoints can only invoke the fixed SpotifyPlus playback action and allowlisted media controls for a selected SpotifyPlus integration member. They do not accept arbitrary HA services. Playback/control calls are not automatically retried after a timeout; inspect the current player state before trying again.
 
