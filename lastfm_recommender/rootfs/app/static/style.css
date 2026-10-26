@@ -193,6 +193,12 @@ input[type=range] { padding: 0; accent-color: var(--accent); background: transpa
 .volume-adjust input { flex: 1; min-width: 40px; margin: 0; }
 .volume-adjust button { flex: none; width: 44px; height: 44px; padding: 0; margin: 0; font-size: 1.4rem; }
 details { margin: 16px 0; }
+.album-playback { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 14px; margin: 12px 0; }
+.album-playback > button { flex: none; margin: 0; }
+.playback-device { flex: 1; min-width: min(220px, 100%); margin: 0; }
+.playback-device summary { font-size: .8rem; color: var(--muted); font-weight: 500; overflow-wrap: anywhere; }
+.playback-device form { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.playback-device select { max-width: 100%; }
 summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .spotify-option { display: flex; gap: 12px; border-top: 1px solid var(--line); padding: 14px 0; }
 .spotify-option > div { min-width: 0; }

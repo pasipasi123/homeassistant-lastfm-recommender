@@ -299,6 +299,22 @@ class ApiTests(DatabaseCase):
         self.assertEqual(self.request("/api/player/control", "POST", payload)[0], 200)
         self.ha.control.assert_called_once_with(PLAYER, "volume", 0.32, device_id="Living room")
 
+    def test_session_destination_does_not_replace_saved_default(self):
+        self.db.set_state("spotifyplus_entity", PLAYER)
+        self.db.set_state("spotify_connect_device", "Living room")
+        self.add([track()])
+        album_id = self.db.albums()[0]["id"]
+        self.db.confirm_album(album_id, URI)
+        payload = {"album_id": album_id, "spotify_uri": URI, "device_id": "Office",
+                   "expected_device": "Office", "expected_entity": PLAYER}
+        self.assertEqual(self.request("/api/play", "POST", payload)[0], 200)
+        self.ha.play.assert_called_once_with(PLAYER, URI, device_id="Office")
+        self.assertEqual(self.request("/api/player/control", "POST",
+                                      {"action": "volume", "volume": 0.3, "device_id": "Office", "expected_device": "Office"})[0], 200)
+        self.ha.control.assert_called_once_with(PLAYER, "volume", 0.3, device_id="Office")
+        self.assertEqual(self.db.get_state("spotify_connect_device"), "Living room")
+        self.assertEqual(self.request("/api/play", "POST", {**payload, "expected_entity": "media_player.other"})[0], 409)
+
     def test_volume_target_rejects_a_changed_selected_player(self):
         self.db.set_state("spotifyplus_entity", PLAYER)
         payload = {"action": "volume", "volume": 0.32, "expected_entity": "media_player.previous"}

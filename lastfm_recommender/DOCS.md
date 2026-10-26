@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.1.4 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.1.5 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -55,7 +55,7 @@ The optional Spotify catalogue credentials are separate from SpotifyPlus authent
 
 Choosing a genre or opening the page does not search or play automatically. Changing filters clears the previous result. A response arriving after filters changed is discarded. Playback submits an album ID and expected URI; the server checks the current confirmed URI in SQLite before making a SpotifyPlus call.
 
-In **Discover**, choose a **Spotify Connect device** and select **Use device**. This saves the destination in the app database without starting or transferring playback. **Refresh devices** rereads SpotifyPlus's HA source list; if a device is missing, check its availability in SpotifyPlus first. Album playback always supplies the saved device name to SpotifyPlus, even if another device was last active. If the saved device is unavailable, choose another device or refresh; the app does not fall back to the active device. Changing SpotifyPlus accounts clears the device selection.
+Save a **Default playback device** in **Settings**. Existing saved destinations remain the default after updating. Next to every album's **Play this album** button, a compact **Playback will start on…** summary expands to a device dropdown. **Use for this session** chooses a temporary destination for this page, without changing the saved default; reloading the page or selecting **Use default** restores the default. All album cards on the page share this destination. Choosing a device never starts or transfers playback. **Refresh devices** rereads SpotifyPlus's HA source list; if a device is missing, check its availability in SpotifyPlus first. Playback always supplies the chosen device name to SpotifyPlus, even if another device was last active. If the destination is unavailable, choose another device or refresh; the app does not fall back to the active device. Changing SpotifyPlus accounts clears the device selection.
 
 **Now playing** shows the selected account's current track and source. Pause, resume, next-track and volume controls target the saved Connect device and are enabled only when HA reports that device as the account's current source. If Spotify is active elsewhere, play an album on the saved device first. The app never uses another device's reported volume as the starting point for adjustments.
 
@@ -128,7 +128,7 @@ Direct HTTP is unencrypted. Use a trusted local network or your own HTTPS revers
 | `POST /api/albums/ID` | Confirm with `{"spotify_uri":"spotify:album:...","tags":["indie folk"]}` |
 | `GET /api/players` | SpotifyPlus players with `devices` source lists, `selected_entity` and `selected_device` |
 | `POST /api/player` | Save selection with `{"entity_id":"media_player.your_spotifyplus_player"}` |
-| `POST /api/player/device` | Save destination with `{"device_id":"Living room speaker","expected_entity":"media_player.your_spotifyplus_player"}`; does not start playback |
+| `POST /api/player/device` | Save default destination with `{"device_id":"Living room speaker","expected_entity":"media_player.your_spotifyplus_player"}`; does not start playback |
 | `POST /api/play` | Request a confirmed album with `{"album_id":1,"spotify_uri":"spotify:album:..."}` |
 | `POST /api/player/control` | `{"action":"pause"}`, `resume`, `next` or `{"action":"volume","volume":0.2}` |
 | `POST /api/sync` | Queue history sync; 202 accepted, 409 busy/queued |
@@ -137,6 +137,8 @@ Direct HTTP is unencrypted. Use a trusted local network or your own HTTPS revers
 | `GET /api/backup` | Download a consistent SQLite backup |
 
 Only `/health`, `/api/session` and static UI files are public on the direct listener. Private endpoints require a token even if forged Ingress headers are supplied. An empty token disables direct private access. All requests on the Ingress listener require the actual Supervisor network peer.
+
+Playback and control requests can include `device_id` to target a temporary destination without changing the saved default. The device is validated against the selected account's source list. The UI includes `expected_entity` and `expected_device` guards with its requests.
 
 Recommendation parameters: `min_years_unheard` (0–100, default 3), `min_total_scrobbles` (1–10000000, default 10), `genre` (optional exact tag), `playable_only` (`true` by default). The UI also permits browsing unconfirmed recommendations. Omit `tags` in confirmation to preserve tags; `[]` removes them. Later enrichment may add tags again.
 

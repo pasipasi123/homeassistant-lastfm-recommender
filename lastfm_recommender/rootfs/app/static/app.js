@@ -6,6 +6,9 @@ let ingress = false;
 let playbackAvailable = false;
 let selectedPlayer = null;
 let selectedDevice = null;
+let defaultDevice = null;
+let temporaryDevice = null;
+let availableDevices = [];
 let deviceDraft = null;
 let deviceSaving = false;
 let controlReady = false;
@@ -239,17 +242,42 @@ function albumCard(album, editable = true) {
     if (album.spotify_match_source === "automatic") element("p", "Automatically linked: unique exact artist and album name match. You can change the edition below.", content);
   }
   if (playbackAvailable) {
-    const play = element("button", "Play this album", content);
+    const playback = element("div", undefined, content); playback.className = "album-playback";
+    const play = element("button", "Play this album", playback);
     play.type = "button"; play.className = "play-album";
     play.dataset.confirmed = String(Boolean(confirmed)); play.disabled = !confirmed || !playerReady;
     play.addEventListener("click", async () => {
       play.disabled = true;
       try {
-        await api("api/play", {method:"POST", body:JSON.stringify({album_id:album.id, spotify_uri:album.spotify_uri, expected_device:selectedDevice})});
+        await api("api/play", {method:"POST", body:JSON.stringify({album_id:album.id, spotify_uri:album.spotify_uri,
+          device_id:selectedDevice, expected_device:selectedDevice, expected_entity:selectedPlayer})});
         message("Playback requested."); await loadPlayers();
       } catch (error) { message(error.message, true); }
       finally { play.disabled = !confirmed || !playerReady; }
     });
+    const picker = element("details", undefined, playback); picker.className = "playback-device";
+    element("summary", "", picker);
+    const deviceForm = element("form", undefined, picker); deviceForm.className = "inline";
+    const label = element("label", "Playback device", deviceForm);
+    const deviceSelect = element("select", undefined, label); deviceSelect.required = true;
+    deviceSelect.setAttribute("aria-label", "Playback device");
+    deviceSelect.addEventListener("change", () => { deviceSelect.dataset.draft = deviceSelect.value; });
+    const use = element("button", "Use for this session", deviceForm); use.type = "submit";
+    const refresh = element("button", "Refresh devices", deviceForm); refresh.type = "button";
+    refresh.className = "secondary"; refresh.addEventListener("click", loadPlayers);
+    const restore = element("button", "Use default", deviceForm); restore.type = "button";
+    restore.className = "secondary";
+    restore.addEventListener("click", async () => {
+      temporaryDevice = null; delete deviceSelect.dataset.draft; picker.open = false;
+      resetVolume(); await loadPlayers();
+    });
+    deviceForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (!availableDevices.includes(deviceSelect.value)) return;
+      temporaryDevice = deviceSelect.value; delete deviceSelect.dataset.draft; picker.open = false;
+      resetVolume(); await loadPlayers();
+    });
+    renderDevicePicker(picker);
     if (!confirmed) element("p", "Confirm this album's Spotify link below before playback.", content);
   }
   const editor = element(!editable && confirmed ? "details" : "div", undefined, content);
@@ -317,6 +345,22 @@ function updatePlaybackButtons() {
   $("#player-volume-down").disabled = !volumeReady || playerVolume <= 0;
   $("#player-volume-up").disabled = !volumeReady || playerVolume >= 1;
 }
+function renderDevicePicker(picker) {
+  picker.querySelector("summary").textContent = !selectedDevice ? "Choose a playback device"
+    : !availableDevices.includes(selectedDevice) ? `${selectedDevice} is unavailable · Change device`
+    : `Playback will start on ${selectedDevice}`;
+  const select = picker.querySelector("select");
+  const draft = select.dataset.draft;
+  const desired = draft ?? selectedDevice ?? "";
+  // Leave a focused menu alone while background status refreshes.
+  if (document.activeElement !== select) {
+    select.replaceChildren(); element("option", "Choose a device", select).value = "";
+    for (const name of availableDevices) element("option", name, select).value = name;
+    if (desired && !availableDevices.includes(desired)) element("option", `${desired} (unavailable)`, select).value = desired;
+    select.value = desired;
+  }
+  for (const button of picker.querySelectorAll('button[type="submit"]')) button.disabled = !selectedPlayer || deviceSaving;
+}
 function renderVolume() {
   const display = playerVolume === null ? null : volumeConfig.min + playerVolume * (volumeConfig.max - volumeConfig.min);
   $("#volume-value").textContent = display === null ? "—" : display.toFixed(volumeConfig.decimals);
@@ -354,7 +398,7 @@ async function sendVolume(state) {
       const target = state.target;
       state.target = null;
       await api("api/player/control", {method:"POST", body:JSON.stringify({
-        action:"volume", volume:target, expected_entity:selectedPlayer, expected_device:selectedDevice
+        action:"volume", volume:target, expected_entity:selectedPlayer, expected_device:selectedDevice, device_id:selectedDevice
       })});
       if (state !== volumeState) return;
       state.awaiting = {target, until:performance.now() + 5000};
@@ -387,21 +431,24 @@ async function loadPlayers() {
   const revision = stateAtStart.revision;
   try {
     const data = await api("api/players");
-    if (selectedPlayer !== data.selected_entity) deviceDraft = null;
-    if (selectedPlayer !== data.selected_entity || selectedDevice !== (data.selected_device || null)) resetVolume();
+    if (selectedPlayer !== data.selected_entity) { deviceDraft = null; temporaryDevice = null; }
+    defaultDevice = data.selected_device || null;
+    const effectiveDevice = temporaryDevice || defaultDevice;
+    if (selectedPlayer !== data.selected_entity || selectedDevice !== effectiveDevice) resetVolume();
     selectedPlayer = data.selected_entity;
-    selectedDevice = data.selected_device || null;
+    selectedDevice = effectiveDevice;
     const select = $("#player-select"); select.replaceChildren();
     const placeholder = element("option", "Select a SpotifyPlus player", select); placeholder.value = "";
     for (const player of data.players) { const option = element("option", `${player.name} (${player.entity_id})`, select); option.value = player.entity_id; }
     select.value = playerDraft ?? selectedPlayer ?? "";
     const player = data.players.find(item => item.entity_id === selectedPlayer);
     const devices = player?.devices || [];
+    availableDevices = devices;
     const deviceSelect = $("#device-select"); deviceSelect.replaceChildren();
     element("option", "Choose a device", deviceSelect).value = "";
     for (const name of devices) { const option = element("option", name, deviceSelect); option.value = name; }
-    if (selectedDevice && !devices.includes(selectedDevice)) element("option", `${selectedDevice} (unavailable)`, deviceSelect).value = selectedDevice;
-    deviceSelect.value = deviceDraft ?? selectedDevice ?? "";
+    if (defaultDevice && !devices.includes(defaultDevice)) element("option", `${defaultDevice} (unavailable)`, deviceSelect).value = defaultDevice;
+    deviceSelect.value = deviceDraft ?? defaultDevice ?? "";
     deviceSelect.disabled = !player || deviceSaving;
     $("#save-device").disabled = !player || deviceSaving;
     playerReady = Boolean(player && player.state !== "unavailable" && devices.includes(selectedDevice) && !deviceSaving);
@@ -409,9 +456,9 @@ async function loadPlayers() {
     controlReady = playerReady && player.source === selectedDevice;
     if (wasControlReady && !controlReady) resetVolume();
     $("#device-status").textContent = !player ? "Choose your SpotifyPlus account in Settings first."
-      : !selectedDevice ? "Choose a device and select Use device before playing."
-      : !devices.includes(selectedDevice) ? `${selectedDevice} is unavailable. Refresh devices or choose another device.`
-      : `Albums will play on ${selectedDevice}.${player.source && player.source !== selectedDevice ? ` Spotify is currently active on ${player.source}.` : ""}`;
+      : !defaultDevice ? "Save a default device, or choose a temporary device next to an album's Play button."
+      : `Default: ${defaultDevice}.${!devices.includes(defaultDevice) ? " This device is unavailable." : ""}${temporaryDevice ? ` This session uses ${temporaryDevice}.` : ""}`;
+    for (const picker of document.querySelectorAll(".playback-device")) renderDevicePicker(picker);
     const reported = controlReady && Number.isFinite(player?.volume_level) && player.volume_level >= 0 && player.volume_level <= 1 ? player.volume_level : null;
     const state = volumeState;
     state.reported = reported;
@@ -448,8 +495,8 @@ $("#device-form").addEventListener("submit", async event => {
   deviceSaving = true; playerReady = false; controlReady = false; resetVolume(); renderVolume();
   $("#save-device").disabled = true; $("#device-select").disabled = true;
   try {
-    await api("api/player/device", {method:"POST", body:JSON.stringify({device_id:deviceDraft ?? selectedDevice, expected_entity:selectedPlayer})});
-    deviceDraft = null; message("Spotify Connect device saved.");
+    await api("api/player/device", {method:"POST", body:JSON.stringify({device_id:deviceDraft ?? defaultDevice, expected_entity:selectedPlayer})});
+    deviceDraft = null; temporaryDevice = null; message("Default playback device saved.");
   } catch (error) { message(error.message, true); }
   finally { deviceSaving = false; await loadPlayers(); }
 });
@@ -464,7 +511,7 @@ async function control(action, volume) {
   if (controlBusy) return;
   controlBusy = true; updatePlaybackButtons();
   try {
-    await api("api/player/control", {method:"POST", body:JSON.stringify({action, volume, expected_entity:selectedPlayer, expected_device:selectedDevice})});
+    await api("api/player/control", {method:"POST", body:JSON.stringify({action, volume, expected_entity:selectedPlayer, expected_device:selectedDevice, device_id:selectedDevice})});
     await loadPlayers();
     if (controlError && $("#message").textContent === controlError) message("");
     controlError = "";
@@ -493,7 +540,7 @@ $("#logout").addEventListener("click", () => {
   $("#status").textContent = "Disconnected."; message("Token removed from this tab.");
   $("#player-state").textContent = "Disconnected."; $("#player-setup").textContent = "Connect to choose a player.";
   $("#player-select").replaceChildren(); selectedPlayer = null; playerDraft = null;
-  playerReady = false; controlReady = false; selectedDevice = null; deviceDraft = null;
+  playerReady = false; controlReady = false; selectedDevice = null; defaultDevice = null; temporaryDevice = null; availableDevices = []; deviceDraft = null;
   $("#device-select").replaceChildren(); $("#device-status").textContent = "Connect to choose a device.";
   playerVolume = null; $("#volume-value").textContent = "—"; updatePlaybackButtons();
 });

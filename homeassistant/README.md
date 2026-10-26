@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.3.1.4** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.3.1.5** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -8,7 +8,7 @@ Version **0.3.1.4** uses Home Assistant Ingress. No dashboard YAML, configuratio
 2. In the app's **Configuration** tab, set your Last.fm username/API key. For automatic album links, **we recommend also setting Spotify Client ID/Secret** and `spotify_market` to your account country (default `FI`). Start or restart the app, then enable **Show in sidebar** on its app page.
 3. Select **Music** in the sidebar, or use **Open Web UI**.
 4. Open **Settings** inside Music, select your **SpotifyPlus player** from the list, and select **Save player**.
-5. In **Discover**, choose your **Spotify Connect device** and select **Use device**. This saves the destination without starting playback.
+5. In **Settings**, choose a **Default playback device** and select **Save default device**. Your existing saved destination becomes the default automatically.
 
 The player list comes from your installed SpotifyPlus integration, including entities you have renamed. The saved selection belongs to your installation and is stored in the app's database. Example documentation contains no personal entity IDs.
 
@@ -32,7 +32,7 @@ Opening Music or choosing genres does not fetch a recommendation or start playba
 
 If your device is available in Spotify Connect, a separate Home Assistant power-on action is generally unnecessary: the app sends the SpotifyPlus playback request directly. If unavailable, check the device's network standby settings and whether it needs to be powered on before retrying.
 
-The selected SpotifyPlus entity represents a Spotify account. Choose the physical destination separately in Discover. The list comes from SpotifyPlus's HA source list; **Refresh devices** rereads it without a Spotify catalogue search. If the saved device is unavailable, playback is blocked rather than sent elsewhere. Now playing shows the account's current source, and playback controls are disabled while it differs from the saved destination. Changing accounts clears the destination.
+The selected SpotifyPlus entity represents a Spotify account. Save the physical default destination in Settings. Next to each **Play this album** button, **Playback will start on…** expands to a device dropdown. **Use for this session** changes the destination for this page until it is reloaded; **Use default** restores the saved default. Choosing a device does not start or transfer playback. The list comes from SpotifyPlus's HA source list; **Refresh devices** rereads it without a Spotify catalogue search. An unavailable destination never falls back to another device. Now playing shows the account's current source, and playback controls are disabled while it differs from the chosen destination. Changing accounts clears the destination.
 
 ## Genre suggestions
 
@@ -68,7 +68,7 @@ Custom listening periods and household-presence rules are future settings. This 
 - **No matching confirmed albums**: confirm more album links under **Album library**, loosen the filters or include unconfirmed albums to browse suggestions.
 - **No genre tags yet**: wait for metadata enrichment, or add tags when confirming an album. A history import alone does not contain album genre tags.
 - **Music is not in the sidebar**: enable **Show in sidebar** on the app page. The panel is administrator-only by default.
-- **No track change after playback**: check the saved Connect device in Discover and HA's SpotifyPlus logs. Refresh devices if necessary. The app reports that playback was requested; it cannot guarantee the device produced sound.
+- **No track change after playback**: check the destination beside the album's Play button and HA's SpotifyPlus logs. Expand the destination to refresh devices if necessary. The app reports that playback was requested; it cannot guarantee the device produced sound.
 
 ## Optional direct access
 

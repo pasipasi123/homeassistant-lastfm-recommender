@@ -138,7 +138,7 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
 
             if path == "/api/status" and method == "GET":
                 self.send_json(200, {**db.status(), "running": worker.running,
-                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.1.4",
+                                     "pending": worker.pending, "phase": worker.phase, "version": "0.3.1.5",
                                      "spotify_configured": bool(worker.settings.spotify_client_id),
                                      "spotify_market": worker.settings.spotify_market,
                                      "enrichment_enabled": worker.settings.enrich_batch_size > 0,
@@ -186,9 +186,12 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                 if body.get("spotify_uri") != album["spotify_uri"]:
                     self.send_json(409, {"error": "The album link changed. Refresh the recommendation before playback"})
                     return
-                device_id = db.get_state("spotify_connect_device")
+                device_id = body.get("device_id", db.get_state("spotify_connect_device"))
                 if not device_id:
-                    raise HomeAssistantError("Choose a Spotify Connect device in Discover before playing an album.")
+                    raise HomeAssistantError("Choose a playback device next to Play or save a default device in Settings.")
+                if "expected_entity" in body and body["expected_entity"] != self.selected_player():
+                    self.send_json(409, {"error": "The selected account changed. Refresh before playback."})
+                    return
                 if body.get("expected_device", device_id) != device_id:
                     self.send_json(409, {"error": "The selected device changed. Refresh before playback."})
                     return
@@ -205,7 +208,9 @@ def make_server(address, db, worker, token, data_dir, *, home_assistant=None, in
                 if "expected_entity" in body and body["expected_entity"] != entity_id:
                     self.send_json(409, {"error": "The selected player changed. Refresh the player before adjusting volume."})
                     return
-                device_id = db.get_state("spotify_connect_device")
+                device_id = body.get("device_id", db.get_state("spotify_connect_device"))
+                if "device_id" in body and (not isinstance(device_id, str) or not device_id):
+                    raise ValueError("Expected device name")
                 if "expected_device" in body and body["expected_device"] != device_id:
                     self.send_json(409, {"error": "The selected device changed. Refresh before using playback controls."})
                     return

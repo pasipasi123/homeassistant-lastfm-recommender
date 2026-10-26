@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1.5
+
+- Replace the full Discover device form with a compact, expandable destination beside each album's Play button.
+- Save the default playback device in Settings. Album-level device choices apply to the current page session without changing the saved default; reload or choose Use default to return to it.
+- Preserve existing saved destinations as defaults. Device selection never starts playback, and controls follow the chosen destination.
+
 ## 0.3.1.4
 
 - Fix device-targeted volume commands sending decimal percentages such as `31.0`, which Spotify rejects. Commands now send integer percentages while retaining the saved device destination and immediate local button feedback.
