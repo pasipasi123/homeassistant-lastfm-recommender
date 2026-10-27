@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4.4
+
+- Require Alpine CA certificates and CA bundle version 20261020-r0 or newer to address the eMudhra/emSign certificate incident. Upgrade these packages and refresh the trust store during image builds.
+- Verify Python's actual default trust store during the build and reject images that still trust the affected emSign ECC Root CA - G3 certificate or have no trusted roots.
+- Pull base images and disable Docker layer caching in CI builds for both supported architectures.
+
 ## 0.3.4.3
 
 - Show a clear off-state message and an explicit Start SpotifyPlus button in Music. Starting works without a cached Connect device list and targets only the selected SpotifyPlus entity.
