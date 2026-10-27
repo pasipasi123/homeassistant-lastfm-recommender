@@ -439,6 +439,17 @@ class IngressTests(DatabaseCase):
 
 
 class HomeAssistantTests(unittest.TestCase):
+    def test_start_spotifyplus_works_without_connect_state(self):
+        client = HomeAssistant("test-token")
+        with patch.object(client, "players", return_value=[{"entity_id": PLAYER, "state": "off", "devices": []}]), \
+                patch.object(client, "_request") as request:
+            client.control(PLAYER, "turn_on", device_id="Previously selected receiver")
+            request.assert_called_once_with("/services/media_player/turn_on", {"entity_id": PLAYER})
+        with patch.object(client, "players", return_value=[]), patch.object(client, "_request") as request:
+            with self.assertRaises(HomeAssistantError):
+                client.control("media_player.unrelated_receiver", "turn_on")
+            request.assert_not_called()
+
     def test_volume_steps_use_fresh_reported_state_and_clamp_at_limits(self):
         client = HomeAssistant("supervisor-secret")
         for current, action, expected in ((0.32, "volume_up", 0.33), (0.32, "volume_down", 0.31),
@@ -526,7 +537,7 @@ class HomeAssistantTests(unittest.TestCase):
     def test_control_allowlist_and_volume_range(self):
         client = HomeAssistant("secret")
         with patch.object(client, "validate_player"), patch.object(client, "_request") as request:
-            for action, value in (("turn_on", None), ("volume", 2), ("volume", float("nan"))):
+            for action, value in (("turn_off", None), ("volume", 2), ("volume", float("nan"))):
                 with self.assertRaises(ValueError):
                     client.control(PLAYER, action, value)
             request.assert_not_called()

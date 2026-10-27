@@ -19,6 +19,9 @@ let playerDraft = null;
 let playerLoading = false;
 let playerVolume = null;
 let controlBusy = false;
+let playerOff = false;
+let playerStartPending = null;
+let playerStartTimer = null;
 let controlError = "";
 let volumeConfig = {min: 0, max: 100, step: 1, decimals: 1};
 let volumeRequestActive = false;
@@ -376,6 +379,8 @@ async function loadAlbums() {
   if (!data.albums.length) element("p", "No albums found. Wait for the import or try another search.", $("#albums"));
 }
 function updatePlaybackButtons() {
+  $("#player-start").disabled = !playerOff || Boolean(playerStartPending);
+  $("#player-start").textContent = playerStartPending ? "Starting…" : "Start SpotifyPlus";
   for (const button of document.querySelectorAll(".play-album")) button.disabled = !playerReady || button.dataset.confirmed !== "true";
   for (const id of ["player-pause", "player-resume", "player-next"]) $(`#${id}`).disabled = !controlReady || controlBusy;
   const volumeReady = controlReady && playerVolume !== null && !volumeState.blocked;
@@ -512,7 +517,15 @@ async function loadPlayers() {
     deviceSelect.value = deviceDraft ?? defaultDevice ?? "";
     deviceSelect.disabled = !player || deviceSaving;
     $("#save-device").disabled = !player || deviceSaving;
-    playerReady = Boolean(player && player.state !== "unavailable" && devices.includes(selectedDevice) && !deviceSaving);
+    playerOff = player?.state === "off";
+    if (playerStartPending && (playerStartPending !== selectedPlayer || !playerOff)) {
+      clearTimeout(playerStartTimer); playerStartPending = null;
+    }
+    $("#player-offer").hidden = !playerOff;
+    $("#player-offer-status").textContent = playerStartPending
+      ? "SpotifyPlus is starting. Waiting for playback status…"
+      : "SpotifyPlus is off. Start it to follow playback and enable controls.";
+    playerReady = Boolean(player && !["off", "unavailable", "unknown"].includes(player.state) && devices.includes(selectedDevice) && !deviceSaving);
     const wasControlReady = controlReady;
     controlReady = playerReady && player.source === selectedDevice;
     if (wasControlReady && !controlReady) resetVolume();
@@ -550,7 +563,7 @@ async function loadPlayers() {
     $("#player-state").textContent = player
       ? `${player.title || "No track playing"}${player.artist ? " — " + player.artist : ""} · ${player.source || player.name} · ${player.state}`
       : "Choose your SpotifyPlus player in Settings to enable playback.";
-  } catch (error) { playerReady = false; controlReady = false; resetVolume(); playerVolume = null; message(error.message, true); }
+  } catch (error) { playerReady = false; controlReady = false; playerOff = false; $("#player-offer").hidden = true; resetVolume(); playerVolume = null; message(error.message, true); }
   finally { playerLoading = false; renderVolume(); scheduleVolumeRead(volumeState); }
 }
 $("#player-select").addEventListener("change", event => { playerDraft = event.target.value; });
@@ -593,6 +606,30 @@ $("#player-volume").addEventListener("change", event => queueVolume(
   (Number(event.target.value) - volumeConfig.min) / (volumeConfig.max - volumeConfig.min)));
 $("#player-volume-up").addEventListener("click", () => queueVolume(playerVolume + volumeConfig.step / (volumeConfig.max - volumeConfig.min)));
 $("#player-volume-down").addEventListener("click", () => queueVolume(playerVolume - volumeConfig.step / (volumeConfig.max - volumeConfig.min)));
+$("#player-start").addEventListener("click", async () => {
+  if (!playerOff || playerStartPending || !selectedPlayer) return;
+  const entity = selectedPlayer;
+  playerStartPending = entity;
+  $("#player-offer-status").textContent = "SpotifyPlus is starting. Waiting for playback status…";
+  updatePlaybackButtons();
+  try {
+    await api("api/player/control", {method:"POST", body:JSON.stringify({action:"turn_on", expected_entity:entity})});
+    if (playerStartPending !== entity) return;
+    playerStartTimer = setTimeout(async () => {
+      await loadPlayers();
+      if (playerStartPending !== entity) return;
+      playerStartPending = null;
+      $("#player-offer-status").textContent = "SpotifyPlus has not started yet. Check the integration in Home Assistant, then try again.";
+      updatePlaybackButtons();
+    }, 15000);
+    await loadPlayers();
+  } catch (error) {
+    if (playerStartPending !== entity) return;
+    playerStartPending = null;
+    $("#player-offer-status").textContent = "SpotifyPlus is off. Start it to follow playback and enable controls.";
+    message(error.message, true); updatePlaybackButtons();
+  }
+});
 async function control(action, volume) {
   if (controlBusy) return;
   controlBusy = true; updatePlaybackButtons();

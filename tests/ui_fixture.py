@@ -51,7 +51,9 @@ class FakeHA:
 
     def control(self, entity_id, action, volume=None, device_id=None):
         self.validate_player(entity_id)
-        if action == "pause":
+        if action == "turn_on":
+            self.state = "idle"
+        elif action == "pause":
             self.state = "paused"
         elif action == "resume":
             self.state = "playing"

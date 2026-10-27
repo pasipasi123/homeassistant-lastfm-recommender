@@ -204,6 +204,36 @@ const path = require('node:path');
     await music.waitForFunction(()=>document.querySelector('#player-state').textContent.includes('paused'));
     await music.getByRole('button',{name:'Resume',exact:true}).click();
     await music.waitForFunction(()=>document.querySelector('#player-state').textContent.includes('playing'));
+    // Off has no source/device state: offer an explicit start, never auto-start.
+    let reportOff=true, startRequests=0, releaseStart;
+    const startGate=new Promise(resolve=>{releaseStart=resolve;});
+    await music.route('**/api/players',async route=>{
+      const response=await route.fetch(); const data=await response.json();
+      if(reportOff) data.players=data.players.map(player=>({...player,state:'off',source:null,volume_level:null,devices:[]}));
+      await route.fulfill({response,json:data});
+    });
+    await music.route('**/api/player/control',async route=>{
+      const body=route.request().postDataJSON();
+      assert.deepEqual(body,{action:'turn_on',expected_entity:'media_player.demo_music'});
+      startRequests++;
+      await startGate;
+      reportOff=false;
+      await route.fulfill({response:await route.fetch()});
+    });
+    await music.evaluate(()=>loadPlayers());
+    assert.equal(await music.locator('#player-offer').isVisible(),true);
+    assert.equal(await music.locator('#player-volume-up').isEnabled(),false);
+    assert.equal(await music.locator('#player-resume').isEnabled(),false);
+    assert.equal(startRequests,0);
+    await music.screenshot({path:'.local-data/music-spotifyplus-off.png',fullPage:true});
+    await music.getByRole('button',{name:'Start SpotifyPlus',exact:true}).click();
+    assert.equal(await music.locator('#player-start').isEnabled(),false);
+    releaseStart();
+    await music.waitForFunction(()=>document.querySelector('#player-offer').hidden);
+    assert.equal(startRequests,1);
+    assert.equal(requests.filter(request=>request.path.endsWith('/api/play')).length,1);
+    await music.unroute('**/api/player/control');
+    await music.unroute('**/api/players');
     assert.equal(await music.locator('#volume-value').innerText(),'20.0');
     let failedWrites = 0;
     await music.route('**/api/player/control',route=>{

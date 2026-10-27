@@ -10,7 +10,7 @@
 </head>
 <body>
 <main>
-  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.3.4.2</p>
+  <header><p class="eyebrow">LAST.FM RECOMMENDER · 0.3.4.3</p>
     <h1>Music</h1><p>Your listening history, rediscovered.</p></header>
   <nav aria-label="Music pages">
     <button id="nav-music" type="button" aria-pressed="true">Discover</button>
@@ -103,6 +103,10 @@
   <section id="now-playing" class="panel" aria-labelledby="now-playing-heading">
     <h2 id="now-playing-heading">Now playing</h2>
     <p id="player-state">Choose your SpotifyPlus player in Settings to enable playback.</p>
+    <div id="player-offer" hidden>
+      <p id="player-offer-status" role="status">SpotifyPlus is off. Start it to follow playback and enable controls.</p>
+      <button id="player-start" type="button">Start SpotifyPlus</button>
+    </div>
     <div id="player-controls" class="inline">
       <button id="player-pause" type="button" class="secondary" disabled>Pause</button>
       <button id="player-resume" type="button" class="secondary" disabled>Resume</button>

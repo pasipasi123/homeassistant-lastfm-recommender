@@ -140,11 +140,16 @@ class HomeAssistant:
                       {"entity_id": entity_id, "context_uri": uri, "device_id": device_id})
 
     def control(self, entity_id, action, volume=None, device_id=None):
-        services = {"pause": "media_pause", "resume": "media_play", "next": "media_next_track",
+        services = {"turn_on": "turn_on", "pause": "media_pause", "resume": "media_play", "next": "media_next_track",
                     "volume": "volume_set", "volume_up": "volume_set", "volume_down": "volume_set"}
         if action not in services:
             raise ValueError("Unsupported player control")
         player = self.validate_player(entity_id)
+        if action == "turn_on":
+            # Enable the selected SpotifyPlus entity even when off has no
+            # current Connect device or cached device list.
+            self._request("/services/media_player/turn_on", {"entity_id": entity_id})
+            return
         if device_id is not None:
             self.validate_device(player, device_id)
             if player.get("source") != device_id:

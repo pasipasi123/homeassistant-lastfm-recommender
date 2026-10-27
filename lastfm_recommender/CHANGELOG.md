@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4.3
+
+- Show a clear off-state message and an explicit Start SpotifyPlus button in Music. Starting works without a cached Connect device list and targets only the selected SpotifyPlus entity.
+- Keep playback controls disabled while off, prevent duplicate start requests while waiting, and wait for the reported state before restoring controls.
+
 ## 0.3.4.2
 
 - Keep volume clicks instant on screen while combining rapid clicks into the latest target after a 300 ms pause.
