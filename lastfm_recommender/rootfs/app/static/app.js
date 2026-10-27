@@ -21,7 +21,9 @@ let playerVolume = null;
 let controlBusy = false;
 let controlError = "";
 let volumeConfig = {min: 0, max: 100, step: 1, decimals: 1};
-let volumeState = {target: null, sending: false, awaiting: null, reported: null, revision: 0, timer: null};
+let volumeRequestActive = false;
+let volumeNextSendAt = 0;
+let volumeState = newVolumeState();
 let genreData = null;
 let expandedGenres = false;
 let recommendationGeneration = 0;
@@ -376,7 +378,7 @@ async function loadAlbums() {
 function updatePlaybackButtons() {
   for (const button of document.querySelectorAll(".play-album")) button.disabled = !playerReady || button.dataset.confirmed !== "true";
   for (const id of ["player-pause", "player-resume", "player-next"]) $(`#${id}`).disabled = !controlReady || controlBusy;
-  const volumeReady = controlReady && playerVolume !== null;
+  const volumeReady = controlReady && playerVolume !== null && !volumeState.blocked;
   $("#player-volume").disabled = !volumeReady;
   $("#player-volume-down").disabled = !volumeReady || playerVolume <= 0;
   $("#player-volume-up").disabled = !volumeReady || playerVolume >= 1;
@@ -400,45 +402,64 @@ function renderDevicePicker(picker) {
 function renderVolume() {
   const display = playerVolume === null ? null : volumeConfig.min + playerVolume * (volumeConfig.max - volumeConfig.min);
   $("#volume-value").textContent = display === null ? "—" : display.toFixed(volumeConfig.decimals);
-  $("#volume-value").setAttribute("aria-busy", String(volumeState.sending || volumeState.target !== null || Boolean(volumeState.awaiting)));
+  $("#volume-value").setAttribute("aria-busy", String(!volumeState.blocked && (volumeState.sending || volumeState.target !== null || Boolean(volumeState.awaiting))));
   if (display !== null && document.activeElement !== $("#player-volume")) $("#player-volume").value = display;
   updatePlaybackButtons();
 }
+function newVolumeState() {
+  return {target: null, sending: false, awaiting: null, reported: null, revision: 0,
+    timer: null, due: 0, blocked: false};
+}
 function resetVolume() {
   clearTimeout(volumeState.timer);
-  volumeState = {target: null, sending: false, awaiting: null, reported: null, revision: 0, timer: null};
+  volumeState = newVolumeState();
 }
 function scheduleVolumeRead(state) {
   clearTimeout(state.timer);
-  if (state !== volumeState || !state.awaiting || state.sending) return;
-  state.timer = setTimeout(async () => {
-    if (state !== volumeState) return;
-    await loadPlayers();
-    scheduleVolumeRead(state);
-  }, 500);
+  if (state !== volumeState || state.blocked || state.sending) return;
+  if (state.awaiting) {
+    // Read HA's cached state without forcing Spotify to refresh.
+    state.timer = setTimeout(async () => {
+      if (state !== volumeState) return;
+      await loadPlayers();
+    }, 500);
+  } else if (state.target !== null) {
+    state.timer = setTimeout(() => sendVolume(state),
+      Math.max(0, state.due - performance.now(), volumeNextSendAt - performance.now()));
+  }
 }
 function queueVolume(value) {
-  if (!controlReady || playerVolume === null || !Number.isFinite(value)) return;
+  if (!controlReady || volumeState.blocked || playerVolume === null || !Number.isFinite(value)) return;
   const state = volumeState;
   const target = Math.round(Math.max(0, Math.min(1, value)) * 1e8) / 1e8;
   if (target === playerVolume) return;
-  state.target = target; state.awaiting = null; state.revision++;
+  state.target = target; state.revision++;
+  // Accumulate rapid clicks locally before sending the latest target.
+  state.due = performance.now() + 300;
   playerVolume = target; renderVolume();
-  sendVolume(state);
+  scheduleVolumeRead(state);
 }
 async function sendVolume(state) {
-  if (state.sending) return;
-  state.sending = true; renderVolume();
+  if (state !== volumeState || state.sending || state.awaiting || state.blocked || state.target === null) return;
+  if (performance.now() < Math.max(state.due, volumeNextSendAt)) {
+    scheduleVolumeRead(state);
+    return;
+  }
+  // A request from a previous device selection must finish before a new one.
+  if (volumeRequestActive) {
+    state.timer = setTimeout(() => sendVolume(state), 500);
+    return;
+  }
+  const target = state.target;
+  state.target = null;
+  state.sending = true; volumeRequestActive = true; renderVolume();
   try {
-    while (state === volumeState && state.target !== null) {
-      const target = state.target;
-      state.target = null;
-      await api("api/player/control", {method:"POST", body:JSON.stringify({
-        action:"volume", volume:target, expected_entity:selectedPlayer, expected_device:selectedDevice, device_id:selectedDevice
-      })});
-      if (state !== volumeState) return;
-      state.awaiting = {target, until:performance.now() + 5000};
-    }
+    await api("api/player/control", {method:"POST", body:JSON.stringify({
+      action:"volume", volume:target, expected_entity:selectedPlayer, expected_device:selectedDevice, device_id:selectedDevice
+    })});
+    if (state !== volumeState) return;
+    // HTTP completion does not mean SpotifyPlus's volume has caught up.
+    state.awaiting = {target, until:performance.now() + 10000};
     if (controlError && $("#message").textContent === controlError) message("");
     controlError = "";
   } catch (error) {
@@ -448,6 +469,8 @@ async function sendVolume(state) {
     playerVolume = state.reported;
     controlError = error.message; message(error.message, true);
   } finally {
+    volumeRequestActive = false;
+    volumeNextSendAt = performance.now() + 1000;
     state.sending = false;
     if (state === volumeState) {
       renderVolume();
@@ -501,10 +524,25 @@ async function loadPlayers() {
     const state = volumeState;
     state.reported = reported;
     const currentRead = state !== stateAtStart || revision === state.revision;
-    if (currentRead && !state.sending && state.target === null) {
-      if (state.awaiting && (performance.now() >= state.awaiting.until ||
-          (reported !== null && Math.abs(reported - state.awaiting.target) < 0.00001))) state.awaiting = null;
-      if (!state.awaiting) playerVolume = reported;
+    if (currentRead && !state.sending) {
+      if (state.awaiting) {
+        // Match the integer percentage actually sent to SpotifyPlus.
+        const acknowledged = reported !== null &&
+          Math.round(reported * 100) === Math.round(state.awaiting.target * 100);
+        if (acknowledged) {
+          state.awaiting = null;
+          if (state.blocked) {
+            state.blocked = false;
+            if ($("#message").textContent === controlError) message("");
+            controlError = "";
+          }
+        } else if (!state.blocked && performance.now() >= state.awaiting.until) {
+          state.blocked = true; state.target = null;
+          controlError = "SpotifyPlus has not confirmed the volume change. Volume controls are paused until it catches up. Check the player in Home Assistant.";
+          message(controlError, true);
+        }
+      }
+      if (state.blocked || (!state.awaiting && state.target === null)) playerVolume = reported;
     }
     $("#player-setup").textContent = !data.players.length
       ? "No SpotifyPlus players found. Install and configure SpotifyPlus in Home Assistant, then refresh players."

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4.2
+
+- Keep volume clicks instant on screen while combining rapid clicks into the latest target after a 300 ms pause.
+- Wait for SpotifyPlus to report the previous volume before sending another command, with at least one second between completed requests and the next write.
+- Pause volume controls and discard queued changes if SpotifyPlus does not confirm within ten seconds. Resume when its reported volume catches up, without replaying discarded clicks.
+
 ## 0.3.4.1
 
 - Filter Spotify suggestions by full artist names, so Arca no longer shows Arcane or other substring matches. Keep genuine collaborations and same-artist edition alternatives for review.

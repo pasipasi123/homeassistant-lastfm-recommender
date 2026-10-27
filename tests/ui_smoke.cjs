@@ -94,7 +94,7 @@ const path = require('node:path');
     music.on('request',request=>requests.push({path:new URL(request.url()).pathname,headers:request.headers()}));
     await music.goto(`http://127.0.0.1:${ports.ingress}${prefix}`);
     await music.locator('#genres button').first().waitFor();
-    await music.locator('#albums h3').waitFor();
+    await music.locator('#albums h3').waitFor({state:'attached'});
     assert.equal(await music.locator('#albums').getByText('Sufjan Stevens Orchestra',{exact:false}).count(),0);
     assert.equal(await music.locator('input[name="min_total_scrobbles"]').inputValue(),'20');
     assert.equal(await music.locator('#auth').isVisible(),false);
@@ -229,10 +229,12 @@ const path = require('node:path');
     let releaseFirst, firstApplied;
     const firstGate = new Promise(resolve=>{releaseFirst=resolve;});
     const applied = new Promise(resolve=>{firstApplied=resolve;});
-    let activeWrites=0, maxWrites=0, staleReads=0;
+    let activeWrites=0, maxWrites=0, staleReads=0, holdVolumeAck=true;
+    const volumeWriteTimes = [];
     await music.route('**/api/player/control',async route=>{
       const body = route.request().postDataJSON();
       volumeWrites.push(body); activeWrites++; maxWrites=Math.max(maxWrites,activeWrites);
+      volumeWriteTimes.push(Date.now());
       const response = await route.fetch();
       if(volumeWrites.length===1) {firstApplied(); await firstGate;}
       activeWrites--;
@@ -241,9 +243,11 @@ const path = require('node:path');
     await music.route('**/api/players',async route=>{
       const response=await route.fetch();
       const data=await response.json();
-      if(volumeWrites.length>=2 && staleReads<2) {
+      if(holdVolumeAck) {
+        data.players=data.players.map(player=>({...player,volume_level:0.20}));
+      } else if(volumeWrites.length>=2 && staleReads<2) {
         staleReads++;
-        data.players=data.players.map(player=>({...player,volume_level:0.21}));
+        data.players=data.players.map(player=>({...player,volume_level:0.25}));
       }
       await route.fulfill({response,json:data});
     });
@@ -261,8 +265,13 @@ const path = require('node:path');
     });
     assert.equal(await music.locator('#volume-value').innerText(),'23.0');
     releaseFirst();
+    await music.waitForFunction(()=>Boolean(volumeState.awaiting));
+    await music.evaluate(()=>loadPlayers());
+    assert.equal(volumeWrites.length,1,'HTTP success alone must not release the next write');
+    holdVolumeAck=false;
     await music.waitForFunction(()=>document.querySelector('#volume-value').getAttribute('aria-busy')==='false');
-    assert.deepEqual(volumeWrites.map(body=>body.volume),[0.21,0.23]);
+    assert.deepEqual(volumeWrites.map(body=>body.volume),[0.25,0.23]);
+    assert.ok(volumeWriteTimes[1]-volumeWriteTimes[0]>=1000,'Volume writes must be paced');
     assert.equal(volumeWrites.every(body=>body.action==='volume'&&body.expected_entity==='media_player.demo_music'),true);
     assert.equal(maxWrites,1);
     assert.equal(staleReads,2);
@@ -274,6 +283,40 @@ const path = require('node:path');
     });
     await music.waitForFunction(()=>document.querySelector('#volume-value').getAttribute('aria-busy')==='false');
     assert.equal(await music.locator('#volume-value').innerText(),'20.0');
+    // A stuck SpotifyPlus state must discard queued clicks and stop writes.
+    let stalledWrites=0, staleVolume=true;
+    await music.route('**/api/player/control',async route=>{
+      stalledWrites++;
+      await route.fulfill({response:await route.fetch()});
+    });
+    await music.route('**/api/players',async route=>{
+      const response=await route.fetch(); const data=await response.json();
+      if(staleVolume) data.players=data.players.map(player=>({...player,volume_level:0.20}));
+      await route.fulfill({response,json:data});
+    });
+    await music.getByRole('button',{name:'Increase volume by 1.0',exact:true}).click();
+    await music.waitForFunction(()=>Boolean(volumeState.awaiting));
+    await music.evaluate(()=>{
+      document.querySelector('#player-volume-up').click();
+      document.querySelector('#player-volume-up').click();
+      volumeState.awaiting.until=-1;
+      return loadPlayers();
+    });
+    await music.waitForFunction(()=>volumeState.blocked);
+    assert.equal(stalledWrites,1);
+    assert.equal(await music.locator('#player-volume-up').isEnabled(),false);
+    assert.ok((await music.locator('#message').innerText()).includes('has not confirmed'));
+    assert.equal(await music.evaluate(()=>volumeState.target),null);
+    staleVolume=false;
+    await music.evaluate(()=>loadPlayers());
+    await music.waitForFunction(()=>!volumeState.blocked);
+    assert.equal(await music.locator('#player-volume-up').isEnabled(),true);
+    assert.equal(await music.locator('#volume-value').innerText(),'21.0');
+    assert.equal(stalledWrites,1,'Recovery must not replay discarded clicks');
+    await music.unroute('**/api/player/control');
+    await music.unroute('**/api/players');
+    await music.getByRole('button',{name:'Decrease volume by 1.0',exact:true}).click();
+    await music.waitForFunction(()=>document.querySelector('#volume-value').getAttribute('aria-busy')==='false');
     await mkdir('.local-data',{recursive:true});
     await music.screenshot({path:'.local-data/music-ingress.png',fullPage:true});
     await music.setViewportSize({width:390,height:844});
