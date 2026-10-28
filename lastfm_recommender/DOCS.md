@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.4.4 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.4.5 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -15,7 +15,7 @@ If Music reports that SpotifyPlus is off, choose **Start SpotifyPlus** in Now pl
 
 ## Container certificate updates
 
-Version 0.3.4.4 requires Alpine `ca-certificates` and `ca-certificates-bundle` 20261020-r0 or newer for the eMudhra/emSign incident. Building refreshes the system trust store and verifies that Python no longer trusts the affected emSign ECC Root CA - G3 root. Update the app to rebuild its image with this check. Home Assistant Core and other apps have separate runtimes and must be updated separately.
+From version 0.3.4.4, the app requires Alpine `ca-certificates` and `ca-certificates-bundle` 20261020-r0 or newer for the eMudhra/emSign incident. Building refreshes the system trust store and verifies that Python no longer trusts the affected emSign ECC Root CA - G3 root. Update the app to rebuild its image with this check. Home Assistant Core and other apps have separate runtimes and must be updated separately.
 
 See the [Python security notice](https://discuss.python.org/t/information-for-python-users-regarding-emudhra-emsign-ca-certificate-security-incident/109576).
 

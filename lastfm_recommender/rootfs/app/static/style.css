@@ -232,4 +232,9 @@ footer a { color: inherit; text-underline-offset: 3px; }
   .volume-control { flex-basis: 100%; }
   .theme-options { grid-template-columns: 1fr; }
 }
+/* Keep scrolling fingers away from the volume slider, including landscape phones. */
+@media (max-width: 650px), (pointer: coarse) {
+  #player-volume { display: none; }
+  .volume-adjust { justify-content: space-between; }
+}
 @media (prefers-reduced-motion: reduce) { button { transition: none; } }

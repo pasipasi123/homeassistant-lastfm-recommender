@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.3.4.4** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.3.4.5** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 
@@ -22,7 +22,7 @@ Discover starts at **20 scrobbles** per album. Scrobbles count track listening e
 
 - **Discover**: choose a genre first, adjust the age/count filters, then select **Find a forgotten favorite**. Review Spotify matches and confirm the album link on the same card; there is no need to switch to Album library. **Check or change Spotify link** also lets you correct an already linked edition.
 - **Play this album**: start a confirmed album on the saved Spotify Connect device, even if Spotify was last used on another device.
-- **Now playing**: view the current track/source, pause, resume or skip. Volume is shown on a 0.0–100.0 scale (for example, **32.0**); use **− / +** for steps of 1.0 or the slider for larger changes.
+- **Now playing**: view the current track/source, pause, resume or skip. Volume is shown on a 0.0–100.0 scale (for example, **32.0**); use **− / +** for steps of 1.0. The slider is available on larger screens with a precise pointer; small screens and touch devices show only the buttons to avoid accidental changes while scrolling.
 - **Album library**: find Spotify links, review uncertain editions, confirm a link and edit tags. Unique exact artist/album matches are linked automatically when catalogue credentials are configured.
 - **Settings**: choose a color theme and your SpotifyPlus player, check history import progress, request a sync or download a backup.
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4.5
+
+- Hide the volume slider on small screens and devices with a coarse primary pointer, including landscape phones. Keep the volume reading and minus/plus buttons available to avoid accidental jumps while scrolling.
+- Retain the slider for larger screens with a precise primary pointer.
+
 ## 0.3.4.4
 
 - Require Alpine CA certificates and CA bundle version 20261020-r0 or newer to address the eMudhra/emSign certificate incident. Upgrade these packages and refresh the trust store during image builds.
