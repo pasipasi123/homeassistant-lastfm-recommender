@@ -1,5 +1,7 @@
 """Single worker serializes sync and enrichment; HTTP stays responsive."""
 import logging
+import json
+import re
 import threading
 import time
 import traceback
@@ -215,11 +217,14 @@ class Worker:
                 message = str(error) if isinstance(error, ServiceError) else type(error).__name__
                 with self.db.connect() as conn:
                     self.db.set_state(error_key, message, conn)
-                    if error_key == "spotify_error" and isinstance(error, ServiceError) and error.retry_after is not None:
-                        self.db.set_state("spotify_retry_at", int(time.time()) + error.retry_after + 1, conn)
-                    if error_key == "enrichment_error":
-                        delay = error.retry_after if isinstance(error, ServiceError) and error.retry_after is not None else 900
-                        self.db.set_state("lastfm_retry_at", int(time.time()) + delay + 1, conn)
+                    delay = 900
+                    if isinstance(error, ServiceError):
+                        if error.status in (400, 401, 403, 404) or error.code in (4, 9, 10, 13, 26):
+                            delay = 3600
+                        if error.retry_after is not None:
+                            delay = error.retry_after
+                    retry_key = "spotify_retry_at" if error_key == "spotify_error" else "lastfm_retry_at"
+                    self.db.set_state(retry_key, int(time.time()) + delay + 1, conn)
                 LOG.warning("Album update stopped (%s): %s", error_key, message)
                 if not isinstance(error, ServiceError):
                     # Keep values, source lines, URLs and credentials out of logs.
@@ -227,11 +232,37 @@ class Worker:
                     LOG.warning("Failure location: %s", " -> ".join(
                         f"{Path(frame.filename).name}:{frame.lineno} ({frame.name})" for frame in frames[-3:]))
 
+    def album_log_context(self, album):
+        def safe(value):
+            text = str(value)
+            for secret in (self.settings.lastfm_api_key, self.settings.spotify_client_id,
+                           self.settings.spotify_client_secret):
+                if secret:
+                    text = text.replace(secret, "[redacted]")
+            return re.sub(r"https?://\S+", "[URL]", text)[:160]
+        return json.dumps({"id": album["id"], "artist": safe(album["artist"]),
+                           "album": safe(album["album"])}, ensure_ascii=True)
+
+    def defer_album_error(self, album, error, source, consecutive):
+        operation = "Last.fm album.getInfo" if source == "lastfm" else "Spotify album search"
+        local = (error.operation == operation and error.status in (400, 404) and error.code is None
+                 and not any(reason in str(error) for reason in ("market rejected", "limit rejected", "offset rejected")))
+        LOG.warning("%s; album=%s; %s", "Album lookup deferred for 24 hours" if local else "Album lookup failed",
+                    self.album_log_context(album), error)
+        if not local:
+            return False
+        self.db.defer_album_lookup(album["id"], source)
+        if consecutive >= 3:
+            raise ServiceError(f"{operation}: three consecutive album requests rejected; lookups paused for one hour",
+                               status=error.status, operation=operation, retry_after=3600)
+        return True
+
     def enrich_metadata(self):
         if self.lastfm_paused() or not self.settings.lastfm_batch_size:
             return
         self.db.set_state("enrichment_error", None)
         self.db.set_state("lastfm_retry_at", None)
+        failures = 0
         for album in self.db.enrichment_queue(self.settings.lastfm_batch_size):
             if self.stop.is_set():
                 return
@@ -239,9 +270,15 @@ class Worker:
                 tags, image = self.lastfm.album(album)
             except ServiceError as error:
                 # Code 6 means album metadata is missing; cache the negative result.
-                if error.code != 6:
+                if error.code == 6:
+                    LOG.info("Last.fm album.getInfo: album not found; album=%s", self.album_log_context(album))
+                    tags, image = [], None
+                elif self.defer_album_error(album, error, "lastfm", failures + 1):
+                    failures += 1
+                    continue
+                else:
                     raise
-                tags, image = [], None
+            failures = 0
             self.db.save_enrichment(album["id"], tags, image, None)
 
     def lastfm_paused(self):
@@ -254,10 +291,18 @@ class Worker:
         if not self.settings.spotify_client_id or self.spotify_paused():
             return
         self.db.set_state("spotify_retry_at", None)
+        failures = 0
         for album in self.db.spotify_queue(self.settings.enrich_batch_size, self.settings.spotify_market):
             if self.stop.is_set():
                 return
-            candidate = self.spotify.search_album(album)
+            try:
+                candidate = self.spotify.search_album(album)
+            except ServiceError as error:
+                if self.defer_album_error(album, error, f"spotify:{self.settings.spotify_market}", failures + 1):
+                    failures += 1
+                    continue
+                raise
+            failures = 0
             self.db.save_spotify_match(album["id"], candidate, self.settings.spotify_market)
 
     def run(self):

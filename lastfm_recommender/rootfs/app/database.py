@@ -115,6 +115,10 @@ class Database:
                     album_id INTEGER NOT NULL REFERENCES albums(id), tag TEXT NOT NULL,
                     PRIMARY KEY(album_id, tag)
                 );
+                CREATE TABLE IF NOT EXISTS album_lookup_retry (
+                    album_id INTEGER NOT NULL REFERENCES albums(id), source TEXT NOT NULL,
+                    retry_at INTEGER NOT NULL, PRIMARY KEY(album_id, source)
+                );
                 CREATE INDEX IF NOT EXISTS tags_tag ON album_tags(tag);
                 CREATE TABLE IF NOT EXISTS import_seen (
                     timestamp INTEGER NOT NULL, artist TEXT NOT NULL, album TEXT NOT NULL,
@@ -353,14 +357,24 @@ class Database:
     def enrichment_queue(self, limit):
         with self.connect() as conn:
             return [dict(r) for r in conn.execute("""SELECT * FROM albums
-                WHERE enriched_at IS NULL OR enriched_at < ?
+                WHERE (enriched_at IS NULL OR enriched_at < ?)
+                AND NOT EXISTS (SELECT 1 FROM album_lookup_retry r WHERE r.album_id=albums.id
+                    AND r.source='lastfm' AND r.retry_at > ?)
                 ORDER BY enriched_at IS NOT NULL, scrobbles_total DESC, id LIMIT ?""",
-                (int(time.time()) - 30 * 86400, limit))]
+                (int(time.time()) - 30 * 86400, int(time.time()), limit))]
+
+    def defer_album_lookup(self, album_id, source):
+        # An HTTP rejection is not evidence of an absent album. Preserve all
+        # metadata and candidates and retry this album after a day, even after restart.
+        with self.connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO album_lookup_retry VALUES (?, ?, ?)",
+                         (album_id, source, int(time.time()) + 86400))
 
     def save_enrichment(self, album_id, tags, image, candidate):
         tags, year, has_years = album_tags(tags)
         encoded_candidate = json.dumps(candidate) if candidate else None
         with self.connect() as conn:
+            conn.execute("DELETE FROM album_lookup_retry WHERE album_id=? AND source='lastfm'", (album_id,))
             conn.execute("""UPDATE albums SET image_url=COALESCE(?, image_url),
                 release_year=CASE WHEN ? THEN ? ELSE release_year END,
                 spotify_candidate=COALESCE(?, spotify_candidate), enriched_at=?, spotify_status=CASE
@@ -375,13 +389,16 @@ class Database:
             return [dict(row) for row in conn.execute("""SELECT * FROM albums
                 WHERE spotify_status != 'confirmed' AND (spotify_checked_at IS NULL
                     OR spotify_checked_at < ? OR spotify_checked_market IS NOT ?)
+                AND NOT EXISTS (SELECT 1 FROM album_lookup_retry r WHERE r.album_id=albums.id
+                    AND r.source=? AND r.retry_at > ?)
                 ORDER BY spotify_checked_at IS NOT NULL, scrobbles_total DESC, id LIMIT ?""",
-                (int(time.time()) - 30 * 86400, market, limit))]
+                (int(time.time()) - 30 * 86400, market, f"spotify:{market}", int(time.time()), limit))]
 
     def save_spotify_match(self, album_id, candidate, market):
         automatic = bool(candidate and candidate.get("confidence") == "exact_unique")
         uri = spotify_uri(candidate["uri"]) if automatic else None
         with self.connect() as conn:
+            conn.execute("DELETE FROM album_lookup_retry WHERE album_id=? AND source=?", (album_id, f"spotify:{market}"))
             # The user may have confirmed a link while the network search ran.
             conn.execute("""UPDATE albums SET spotify_candidate=?, spotify_checked_at=?,
                 spotify_checked_market=?, spotify_uri=?, spotify_status=?, spotify_match_source=?,

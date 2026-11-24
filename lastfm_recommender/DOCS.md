@@ -2,7 +2,7 @@
 
 ## Install or update
 
-1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.4.5 builds locally on your HA server.
+1. Add `https://github.com/pasipasi123/homeassistant-lastfm-recommender` to the HA app store and install **Last.fm Recommender**. Version 0.3.4.6 builds locally on your HA server.
 2. Enter your **Last.fm username** and **Last.fm API key** in app configuration. The Last.fm shared secret is not needed.
 3. Start the app, enable **Show in sidebar**, and open **Music** or **Open Web UI**.
 4. In Music's **Settings**, choose your SpotifyPlus player and select **Save player**.
@@ -12,6 +12,12 @@ Home Assistant authenticates the Ingress page. No extra app login, dashboard YAM
 Existing Last.fm settings, history, tags, checkpoints and confirmed Spotify links are preserved. The saved SpotifyPlus entity belongs to this installation and is stored in the app database. [Music setup and daily use](../homeassistant/README.md).
 
 If Music reports that SpotifyPlus is off, choose **Start SpotifyPlus** in Now playing. This enables the selected SpotifyPlus entity and waits for its playback status. It also works when the off entity has no cached Connect device list. If it does not start, check the SpotifyPlus integration in Home Assistant; the app does not automatically retry or reload the integration.
+
+## Album lookup failures
+
+An individual rejected album request (HTTP 400/404) is deferred for 24 hours so other albums can be processed. This does not record a false no-match or erase existing album data. Last.fm's explicit missing-album response is cached normally. Retry deadlines survive app restarts and Spotify markets are handled independently.
+
+Three consecutive rejected albums pause that source for one hour, as do authentication and general parameter errors. Quota responses retain the provider's retry deadline. Diagnostics include the operation, HTTP/API code and bounded artist/album information; credentials, raw provider messages and full request URLs are excluded.
 
 ## Container certificate updates
 

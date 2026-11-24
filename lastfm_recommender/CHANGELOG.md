@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4.6
+
+- Preserve HTTP status, safe API error categories and operation names when album requests fail. Log bounded, escaped album details without credentials or request URLs.
+- Recognize Last.fm's missing-album code even in HTTP error responses. Defer other album-specific HTTP 400/404 failures for 24 hours and continue the batch without erasing tags, images, suggestions or confirmed links.
+- Persist per-album retry deadlines across restarts, independently for Last.fm and each Spotify market. Pause a source for one hour after three consecutive rejected albums or authentication/parameter errors; preserve provider quota deadlines.
+- Apply a retry pause to other Spotify lookup failures instead of repeating them on every five-minute cycle.
+
 ## 0.3.4.5
 
 - Hide the volume slider on small screens and devices with a coarse primary pointer, including landscape phones. Keep the volume reading and minus/plus buttons available to avoid accidental jumps while scrolling.

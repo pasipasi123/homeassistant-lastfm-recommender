@@ -1,6 +1,6 @@
 # Music sidebar setup
 
-Version **0.3.4.5** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
+Version **0.3.4.6** uses Home Assistant Ingress. No dashboard YAML, configuration package, custom card, resource registration or separate Home Assistant token is required.
 
 ## Update and open Music
 

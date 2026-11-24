@@ -14,10 +14,38 @@ from database import matching_artist, normalized, spotify_uri
 
 
 class ServiceError(Exception):
-    def __init__(self, message, code=None, retry_after=None):
+    def __init__(self, message, code=None, retry_after=None, *, status=None, operation=None):
         super().__init__(message)
         self.code = code
         self.retry_after = retry_after
+        self.status = status
+        self.operation = operation
+
+
+def rejected_request(payload, operation, status=None):
+    """Keep useful error categories, never provider text that may echo secrets."""
+    error = payload.get("error") if isinstance(payload, dict) else None
+    code = error if type(error) is int else None
+    reason = "request rejected"
+    if isinstance(error, str) and error in (
+            "invalid_client", "invalid_grant", "invalid_request", "unsupported_grant_type"):
+        code, reason = error, error.replace("_", " ")
+    elif isinstance(error, dict):
+        if status is None and type(error.get("status")) is int:
+            status = error["status"]
+        message = str(error.get("message", "")).lower()
+        for needle, label in (("query", "search query rejected"), ("market", "market rejected"),
+                              ("limit", "limit rejected"), ("offset", "offset rejected")):
+            if needle in message:
+                reason = label
+                break
+    detail = f"HTTP {status}" if status is not None else "API rejected request"
+    if code is not None:
+        detail += f" (code {code})"
+    if code == 29:
+        return ServiceError(f"{operation}: request limit reached; album details paused temporarily",
+                            code=29, retry_after=900, status=status, operation=operation)
+    return ServiceError(f"{operation}: {detail}; {reason}", code=code, status=status, operation=operation)
 
 
 def retry_after_seconds(value):
@@ -37,7 +65,7 @@ def retry_after_seconds(value):
             return 15 * 60
 
 
-def request_json(url, *, data=None, headers=None, stop=None):
+def request_json(url, *, data=None, headers=None, stop=None, operation="API request"):
     stop = stop or threading.Event()
     for attempt in range(4):
         if stop.is_set():
@@ -53,24 +81,31 @@ def request_json(url, *, data=None, headers=None, stop=None):
                 if code == 29:
                     raise ServiceError("Last.fm request limit reached; album details paused temporarily", code=29, retry_after=900)
                 if code not in (11, 16, 29):
-                    safe_code = code if isinstance(code, (int, str)) else "unknown"
-                    raise ServiceError(f"API rejected request (code {safe_code}); check app credentials and permissions", code=code)
+                    raise rejected_request(payload, operation)
             else:
                 return payload
         except HTTPError as error:
             if error.code != 429 and error.code < 500:
-                raise ServiceError(f"API HTTP {error.code}; check credentials, permissions and API access") from None
+                try:
+                    payload = json.loads(error.read(8192))
+                except (ValueError, OSError, TypeError, AttributeError):
+                    payload = None
+                finally:
+                    error.close()
+                raise rejected_request(payload, operation, error.code) from None
             if error.code == 429:
                 # Let the worker persist the deadline instead of blocking or
                 # retrying early on its next five-minute enrichment cycle.
                 retry_after = retry_after_seconds((error.headers or {}).get("Retry-After"))
+                error.close()
                 raise ServiceError(f"API quota exceeded; album requests paused for {retry_after} seconds",
-                                   code=429, retry_after=retry_after) from None
+                                   code=429, retry_after=retry_after, status=429, operation=operation) from None
+            error.close()
         except (URLError, TimeoutError, OSError, ValueError):
             pass
         if attempt < 3 and stop.wait(delay):
             raise ServiceError("Request cancelled")
-    raise ServiceError("API unavailable after bounded retries; retry on a later sync")
+    raise ServiceError(f"{operation}: unavailable after bounded retries; retry on a later sync", operation=operation)
 
 
 class LastFM:
@@ -83,7 +118,7 @@ class LastFM:
             raise ServiceError("Request cancelled")
         return request_json("https://ws.audioscrobbler.com/2.0/?" + urlencode({
             "method": method, "api_key": self.settings.lastfm_api_key,
-            "format": "json", **params}), stop=self.stop)
+            "format": "json", **params}), stop=self.stop, operation=f"Last.fm {method}")
 
     def recent(self, job):
         payload = self.call("user.getRecentTracks", user=self.settings.lastfm_username,
@@ -140,7 +175,7 @@ class Spotify:
                                   data=b"grant_type=client_credentials",
                                   headers={"Authorization": "Basic " + auth,
                                            "Content-Type": "application/x-www-form-urlencoded"},
-                                  stop=self.stop)
+                                  stop=self.stop, operation="Spotify token")
             self.token = result["access_token"]
             self.expires = time.monotonic() + int(result["expires_in"]) - 60
         if self.stop.wait(0.5):
@@ -155,7 +190,7 @@ class Spotify:
             result = request_json("https://api.spotify.com/v1/search?" + urlencode({
                 "q": query, "type": "album", "limit": 10, "offset": offset,
                 "market": self.settings.spotify_market}),
-                headers={"Authorization": "Bearer " + self.token}, stop=self.stop)
+                headers={"Authorization": "Bearer " + self.token}, stop=self.stop, operation="Spotify album search")
             page = result.get("albums", {})
             for item in page.get("items", []):
                 try:
